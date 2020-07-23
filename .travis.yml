@@ -1,0 +1,34 @@
+language: go
+
+dist: bionic
+
+os:
+  - linux
+
+services:
+  - docker
+
+env:
+  global:
+    - GO111MODULE=on
+
+before_install:
+  - git config --global url."git@github.com:".insteadOf "https://github.com/"
+  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.29.0
+
+before_script:
+  - make integration_deps
+
+go:
+  - 1.14.x
+
+script:
+  - go fmt ./...
+  - go vet ./...
+  - golangci-lint run ./...
+  - make ci_tests
+
+cache:
+  directories:
+    - $HOME/.cache/go-build
+    - $HOME/gopath/pkg/mod
