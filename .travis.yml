@@ -23,9 +23,6 @@ go:
   - 1.14.x
 
 script:
-  - go fmt ./...
-  - go vet ./...
-  - golangci-lint run ./...
   - make ci_tests
 
 cache:

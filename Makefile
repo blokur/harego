@@ -33,6 +33,9 @@ integration_test: ## Run integration in watch mode. You can set: [run, timeout, 
 
 .PHONY: ci_tests
 ci_tests: ## Run tests for CI.
+	go fmt ./...
+	go vet ./...
+	golangci-lint run ./...
 	go test -trimpath --timeout=5m -failfast -v -tags=integration -race ./...
 	go test -trimpath --timeout=5m -failfast -tags=integration -covermode=count -coverprofile=coverage.out ./...
 
@@ -84,3 +87,10 @@ changelog_release: ## Update the changelog with a release tag.
 clean: ## Clean test caches and tidy up modules.
 	@go clean -testcache
 	@go mod tidy
+
+
+.PHONY: coverage
+coverage: ## Show the coverage on browser.
+	go test -covermode=count -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out | tail -n 1
+	go tool cover -html=coverage.out
