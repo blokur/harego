@@ -90,7 +90,7 @@ clean: ## Clean test caches and tidy up modules.
 
 
 .PHONY: coverage
-coverage: ## Show the coverage on browser.
+coverage: ## Show the test coverage on browser.
 	go test -covermode=count -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out | tail -n 1
 	go tool cover -html=coverage.out

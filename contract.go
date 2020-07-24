@@ -20,7 +20,7 @@ type RabbitMQ interface {
 	Close() error
 }
 
-// A Channel can operate queues.
+// A Channel can operate queues. This is a subset of the amqp.Channel api.
 type Channel interface {
 	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
 	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error

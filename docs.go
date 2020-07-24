@@ -1,27 +1,28 @@
 // Package harego contains the logic for communicating with RabbitMQ.
 //
-// Exchange
+// Client
 //
-// Exchange creates concurrent safe exchange and a queue for managing all
-// communications with RabbitMQ. You should call the Close() method when you are
-// done with this object, otherwise you will leak goroutines. An Exchange that
-// has been used for publishing can not be used for consuming. Zero value is not
-// usable.
+// A Client wraps an exchange and a queue in a concurrent safe manner for
+// managing all communications with RabbitMQ. An Client that has been used for
+// publishing can not be used for consuming. Zero value is not usable.
 //
-// The only requirement for an Exchange to operate is an *amqp.Connection. The
-// Exchange will create 1 worker by default for consuming messages. The default
-// Exchange is "default" and it is set up on the "topic". The default delivery
+// The only requirement for an Client to operate is an *amqp.Connection. The
+// Client will create 1 worker by default for consuming messages. The default
+// Client is "default" and it is set up on the "topic". The default delivery
 // method is persistent. You can use provided ConfigFunc functions to change the
-// Exchange's behaviour.
+// Client's behaviour.
 //
-// NewExchange
+// You should call the Close() method when you are done with this object,
+// otherwise you will leak goroutines.
 //
-// NewExchange returns an Exchange instance. You can configure the object with
+// NewClient
+//
+// NewClient returns an Client instance. You can configure the object with
 // passing provided ConfigFunc functions.
 //	r, err = amqp.Dial("amqp://")
 //	// handle error
 //
-//	e, err := harego.NewExchange(r)
+//	e, err := harego.NewClient(r)
 //	// handle error
 //
 // Publish
@@ -41,6 +42,6 @@
 //
 // Close
 //
-// Close closes the channel and the connection. The Exchange is useless after
+// Close closes the channel and the connection. The Client is useless after
 // close.
 package harego

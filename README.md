@@ -20,13 +20,13 @@ High-level library on top of [amqp][amqp].
 
 ## Description
 
-An Exchange is a concurrent safe exchange and a queue for managing all
-communications with RabbitMQ. The only requirement for an Exchange to operate is
-an [amqp](github.com/streadway/amqp) connection. The Exchange will create
-workers for consuming messages. The default values are chosen to make the
-Exchange a durable queue working with the `default` exchange and `topic` kind.
-Exchange can be configure by passing provided `ConfigFunc` functions to
-NewExchange() constructor.
+An Client is a concurrent safe exchange and a queue for managing all
+communications with RabbitMQ. The only requirement for an Client to operate is
+an [amqp](github.com/streadway/amqp) connection. The Client will create workers
+for consuming messages. The default values are chosen to make the Client a
+durable queue working with the `default` exchange and `topic` kind. Client can
+be configure by passing provided `ConfigFunc` functions to NewClient()
+constructor.
 
 The `Consume()` method will call the provided `HandlerFunc` with the next
 message and waits until it returns before it passes the next one. The return
@@ -34,11 +34,11 @@ value of the `HandlerFunc` decided what would happen to the message. The
 `Consume` worker will delay before act on the `ack` for the amount of time the
 `HandlerFunc` returns as the second value.
 
-You can increase the worker sizes by passing `Workers(n)` to the `NewExchange`
+You can increase the worker sizes by passing `Workers(n)` to the `NewClient`
 constructor.
 
 When the `Close()` method is called, all connections will be closed and the
-`Exchange` will be useless. You can create a new object for more works.
+`Client` will be useless. You can create a new object for more works.
 
 ## Development
 

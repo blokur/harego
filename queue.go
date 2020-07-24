@@ -11,11 +11,11 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// Exchange is a concurrent safe construct for publishing a message to an
+// Client is a concurrent safe construct for publishing a message to an
 // exchange. It creates multiple workers for safe communication. Zero value is
 // not usable.
 //nolint:maligned // most likely not an issue, but cleaner this way.
-type Exchange struct {
+type Client struct {
 	conn         RabbitMQ
 	workers      int
 	consumerName string
@@ -41,6 +41,7 @@ type Exchange struct {
 	pubChBuff int
 	pubCh     chan *publishMsg
 	channel   Channel
+	queue     amqp.Queue
 	once      sync.Once
 	cancel    func()
 	closed    bool
@@ -51,10 +52,10 @@ type publishMsg struct {
 	errCh chan error
 }
 
-// NewExchange returns an Exchange instance on the default exchange.
-func NewExchange(conn *amqp.Connection, conf ...ConfigFunc) (*Exchange, error) {
+// NewClient returns an Client instance on the default exchange.
+func NewClient(conn *amqp.Connection, conf ...ConfigFunc) (*Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	e := &Exchange{
+	c := &Client{
 		conn:          &rabbitWrapper{conn: conn},
 		exchName:      "default",
 		queueName:     "harego",
@@ -68,72 +69,79 @@ func NewExchange(conn *amqp.Connection, conf ...ConfigFunc) (*Exchange, error) {
 		pubChBuff:     10,
 		consumerName:  internal.GetRandomName(),
 	}
-	for _, c := range conf {
-		c(e)
+	for _, cnf := range conf {
+		cnf(c)
 	}
-	err := e.validate()
+	err := c.validate()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "validating configuration")
 	}
-	e.channel, err = e.conn.Channel()
+	c.channel, err = c.conn.Channel()
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "creating channel")
 	}
-	err = e.channel.ExchangeDeclare(
-		e.exchName,
-		e.exchType.String(),
-		e.durable,
-		e.autoDelete,
-		e.internal,
-		e.noWait,
+	// to make sure rabbitmq is fair on workers.
+	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, true)
+	if err != nil {
+		return nil, errors.Wrap(err, "setting Qos")
+	}
+	c.queue, err = c.channel.QueueDeclare(
+		c.queueName,
+		c.durable,
+		c.autoDelete,
+		false,
+		c.noWait,
 		nil,
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "declaring queue")
 	}
-	// to make sure rabbitmq is fair on workers.
-	err = e.channel.Qos(e.prefetchCount, e.prefetchSize, true)
+	c.pubCh = make(chan *publishMsg, c.pubChBuff)
+	err = c.publishWorkers(ctx)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "starting workers")
 	}
-	e.pubCh = make(chan *publishMsg, e.pubChBuff)
-	err = e.publishWorkers(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return e, nil
+	return c, nil
 }
 
 // Publish sends the msg to the queue.
-func (e *Exchange) Publish(msg *amqp.Publishing) error {
-	if e.closed {
+func (c *Client) Publish(msg *amqp.Publishing) error {
+	if c.closed {
 		return ErrClosed
 	}
 	err := make(chan error)
-	e.pubCh <- &publishMsg{
+	c.pubCh <- &publishMsg{
 		msg:   msg,
 		errCh: err,
 	}
 	return <-err
 }
 
-func (e *Exchange) publishWorkers(ctx context.Context) error {
-	err := e.channel.QueueBind(e.queueName, e.routingKey, e.exchName, e.noWait, nil)
+func (c *Client) publishWorkers(ctx context.Context) error {
+	err := c.channel.ExchangeDeclare(
+		c.exchName,
+		c.exchType.String(),
+		c.durable,
+		c.autoDelete,
+		c.internal,
+		c.noWait,
+		nil,
+	)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "declaring exchange")
+	}
+	err = c.channel.QueueBind(c.queueName, c.routingKey, c.exchName, c.noWait, nil)
+	if err != nil {
+		return errors.Wrap(err, "binding queue")
 	}
 	fn := func(msg *amqp.Publishing) error {
-		_, err := e.getQueue()
-		if err != nil {
-			return err
-		}
-		msg.DeliveryMode = uint8(e.deliveryMode)
-		err = e.channel.Publish(e.queueName, e.routingKey, false, false, *msg)
-		return err
+		msg.DeliveryMode = uint8(c.deliveryMode)
+		err = c.channel.Publish(c.exchName, c.routingKey, false, false, *msg)
+		return errors.Wrap(err, "publishing message")
 	}
 
 	go func() {
-		for msg := range e.pubCh {
+		for msg := range c.pubCh {
 			select {
 			case <-ctx.Done():
 				return
@@ -145,45 +153,31 @@ func (e *Exchange) publishWorkers(ctx context.Context) error {
 	return nil
 }
 
-func (e *Exchange) getQueue() (amqp.Queue, error) {
-	return e.channel.QueueDeclare(
-		e.queueName,
-		e.durable,
-		e.autoDelete,
-		false,
-		e.noWait,
-		nil,
-	)
-}
-
-// Consume calls the handler on each message and stops handling messages when
-// the context is done. If the handler returns false, the message is returned
-// back to the queue.
-func (e *Exchange) Consume(ctx context.Context, handler HandlerFunc) error {
-	if e.closed {
+// Consume is a bloking call that passes each message to the handler and stops
+// handling messages when the context is done. If the handler returns false, the
+// message is returned back to the queue. If the context is cancelled, the
+// Client remains operational but no messages will be deliverd to this
+// handler.
+func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
+	if c.closed {
 		return ErrClosed
 	}
-
-	ctx, e.cancel = context.WithCancel(ctx)
-	_, err := e.getQueue()
-	if err != nil {
-		return err
-	}
-	msgs, err := e.channel.Consume(
-		e.queueName,
-		e.consumerName,
-		e.autoAck,
+	ctx, c.cancel = context.WithCancel(ctx)
+	msgs, err := c.channel.Consume(
+		c.queueName,
+		c.consumerName,
+		c.autoAck,
 		false,
 		false,
-		e.noWait,
+		c.noWait,
 		nil,
 	)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "getting consume channel")
 	}
 	var wg sync.WaitGroup
-	wg.Add(e.workers)
-	for i := 0; i < e.workers; i++ {
+	wg.Add(c.workers)
+	for i := 0; i < c.workers; i++ {
 		go func() {
 			defer wg.Done()
 			for {
@@ -202,7 +196,7 @@ func (e *Exchange) Consume(ctx context.Context, handler HandlerFunc) error {
 						msg.Reject(false)
 						// case AckTypeRequeue:
 						// 	msg.Reject(false)
-						// 	e.pubCh <- msg
+						// 	c.pubCh <- msg
 					}
 				case <-ctx.Done():
 					return
@@ -211,60 +205,62 @@ func (e *Exchange) Consume(ctx context.Context, handler HandlerFunc) error {
 		}()
 	}
 	wg.Wait()
-	return nil
+	return ctx.Err()
 }
 
 // Close closes the channel and the connection.
-func (e *Exchange) Close() error {
-	e.once.Do(func() {
-		e.cancel()
-		e.closed = true
+func (c *Client) Close() error {
+	c.once.Do(func() {
+		c.cancel()
+		c.closed = true
 	})
 	var err *multierror.Error
-	if e.channel != nil {
-		er := e.channel.Close()
+	if c.channel != nil {
+		er := c.channel.Close()
 		if er != nil {
 			err = multierror.Append(err, er)
 		}
-		e.channel = nil
+		c.channel = nil
 	}
-	if e.conn != nil {
-		er := e.conn.Close()
+	if c.conn != nil {
+		er := c.conn.Close()
 		if er != nil {
 			err = multierror.Append(err, er)
 		}
-		e.conn = nil
+		c.conn = nil
 	}
 	return err.ErrorOrNil()
 }
 
-func (e *Exchange) validate() error {
-	if e.conn == nil {
+// func (c *Client) Clone()
+
+func (c *Client) validate() error {
+	if c.conn == nil {
 		return errors.Wrap(ErrInput, "empty RabbitMQ connection")
 	}
-	if e.workers < 1 {
-		return errors.Wrapf(ErrInput, "not enough workers: %d", e.workers)
+	if c.workers < 1 {
+		return errors.Wrapf(ErrInput, "not enough workers: %d", c.workers)
 	}
-	if e.consumerName == "" {
+	if c.consumerName == "" {
 		return errors.Wrap(ErrInput, "empty consumer name")
 	}
-	if e.queueName == "" {
+	if c.queueName == "" {
 		return errors.Wrap(ErrInput, "empty queue name")
 	}
-	if e.exchName == "" {
+	if c.exchName == "" {
 		return errors.Wrap(ErrInput, "empty exchange name")
 	}
-	if !e.exchType.IsValid() {
-		return errors.Wrapf(ErrInput, "exchange type: %q", e.exchType.String())
+	if !c.exchType.IsValid() {
+		return errors.Wrapf(ErrInput, "exchange type: %q", c.exchType.String())
 	}
-	if e.prefetchCount < 1 {
-		return errors.Wrapf(ErrInput, "not enough prefetch count: %d", e.prefetchCount)
+	if c.prefetchCount < 1 {
+		return errors.Wrapf(ErrInput, "not enough prefetch count: %d", c.prefetchCount)
 	}
-	if e.prefetchSize < 0 {
-		return errors.Wrapf(ErrInput, "not enough prefetch size: %d", e.prefetchSize)
+	if c.prefetchSize < 0 {
+		return errors.Wrapf(ErrInput, "not enough prefetch size: %d", c.prefetchSize)
 	}
-	if !e.deliveryMode.IsValid() {
-		return errors.Wrapf(ErrInput, "delivery mode: %q", e.deliveryMode.String())
+	if !c.deliveryMode.IsValid() {
+		return errors.Wrapf(ErrInput, "delivery mode: %q", c.deliveryMode.String())
 	}
 	return nil
 }

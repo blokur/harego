@@ -11,7 +11,8 @@ import (
 // ExampleHandlerFunc_ack instructs the consumer to drop the message
 // immediately.
 func ExampleHandlerFunc_ack() {
-	var fn harego.HandlerFunc = func(amqp.Delivery) (harego.AckType, time.Duration) {
+	var fn harego.HandlerFunc = func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		// logic for working with msg.Body goes here.
 		return harego.AckTypeAck, 0
 	}
 	got, delay := fn(amqp.Delivery{})
@@ -26,6 +27,7 @@ func ExampleHandlerFunc_ack() {
 // there are enough workers to respond to other tasks.
 func ExampleHandlerFunc_reject() {
 	var fn harego.HandlerFunc = func(amqp.Delivery) (harego.AckType, time.Duration) {
+		// logic for working with msg.Body goes here.
 		return harego.AckTypeReject, 100 * time.Millisecond
 	}
 	got, delay := fn(amqp.Delivery{})
@@ -39,6 +41,7 @@ func ExampleHandlerFunc_reject() {
 // end of the queue after 1 second.
 func ExampleHandlerFunc_requeue() {
 	var fn harego.HandlerFunc = func(amqp.Delivery) (harego.AckType, time.Duration) {
+		// logic for working with msg.Body goes here.
 		return harego.AckTypeRequeue, time.Second
 	}
 	got, delay := fn(amqp.Delivery{})

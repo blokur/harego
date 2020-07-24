@@ -9,11 +9,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewExchange(t *testing.T) {
-	t.Run("BadInput", testNewExchangeBadInput)
+func TestNewClient(t *testing.T) {
+	t.Run("BadInput", testNewClientBadInput)
 }
 
-func testNewExchangeBadInput(t *testing.T) {
+func testNewClientBadInput(t *testing.T) {
 	t.Parallel()
 	tcs := []struct {
 		msg  string
@@ -35,10 +35,10 @@ func testNewExchangeBadInput(t *testing.T) {
 			harego.ExchangeName(""),
 		}},
 		{"exchange type", []harego.ConfigFunc{
-			harego.WithExchangeType(-1),
+			harego.WithClientType(-1),
 		}},
 		{"exchange type", []harego.ConfigFunc{
-			harego.WithExchangeType(9999999),
+			harego.WithClientType(9999999),
 		}},
 		{"prefetch count", []harego.ConfigFunc{
 			harego.PrefetchCount(0),
@@ -54,7 +54,7 @@ func testNewExchangeBadInput(t *testing.T) {
 		tc := tc
 		name := fmt.Sprintf("%d_%s", i, tc.msg)
 		t.Run(name, func(t *testing.T) {
-			_, err := harego.NewExchange(nil,
+			_, err := harego.NewClient(nil,
 				tc.conf...,
 			)
 			require.Error(t, err)

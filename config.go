@@ -17,110 +17,110 @@ func (r *rabbitWrapper) Channel() (Channel, error) {
 	return r.conn.Channel()
 }
 
-// ConfigFunc is a function for setting up the Exchange.
-type ConfigFunc func(*Exchange)
+// ConfigFunc is a function for setting up the Client.
+type ConfigFunc func(*Client)
 
 // Connection sets the RabbitMQ connection.
-func Connection(c *amqp.Connection) ConfigFunc {
-	return func(e *Exchange) {
-		e.conn = &rabbitWrapper{conn: c}
+func Connection(conn *amqp.Connection) ConfigFunc {
+	return func(c *Client) {
+		c.conn = &rabbitWrapper{conn: conn}
 	}
 }
 
 // WithRabbitMQMock sets up a mock version of RabbitMQ.
 func WithRabbitMQMock(r RabbitMQ) ConfigFunc {
-	return func(e *Exchange) {
-		e.conn = r
+	return func(c *Client) {
+		c.conn = r
 	}
 }
 
-// QueueName set the queueName property of the exchange.
+// QueueName set the queueName property of the client.
 func QueueName(name string) ConfigFunc {
-	return func(e *Exchange) {
-		e.queueName = name
+	return func(c *Client) {
+		c.queueName = name
 	}
 }
 
-// RoutingKey set the routingKey property of the exchange.
+// RoutingKey set the routingKey property of the client.
 func RoutingKey(key string) ConfigFunc {
-	return func(e *Exchange) {
-		e.routingKey = key
+	return func(c *Client) {
+		c.routingKey = key
 	}
 }
 
-// Workers set the workers property of the exchange.
+// Workers set the workers property of the client.
 func Workers(n int) ConfigFunc {
-	return func(e *Exchange) {
-		e.workers = n
+	return func(c *Client) {
+		c.workers = n
 	}
 }
 
-// WithDeliveryMode set the deliveryMode property of the exchange.
+// WithDeliveryMode set the deliveryMode property of the client.
 func WithDeliveryMode(mode DeliveryMode) ConfigFunc {
-	return func(e *Exchange) {
-		e.deliveryMode = mode
+	return func(c *Client) {
+		c.deliveryMode = mode
 	}
 }
 
-// PrefetchCount set the prefetchCount property of the exchange.
+// PrefetchCount set the prefetchCount property of the client.
 func PrefetchCount(i int) ConfigFunc {
-	return func(e *Exchange) {
-		e.prefetchCount = i
+	return func(c *Client) {
+		c.prefetchCount = i
 	}
 }
 
-// PrefetchSize set the prefetchSize property of the exchange.
+// PrefetchSize set the prefetchSize property of the client.
 func PrefetchSize(i int) ConfigFunc {
-	return func(e *Exchange) {
-		e.prefetchSize = i
+	return func(c *Client) {
+		c.prefetchSize = i
 	}
 }
 
-// WithExchangeType set the exchType property of the exchange.
-func WithExchangeType(t ExchangeType) ConfigFunc {
-	return func(e *Exchange) {
-		e.exchType = t
+// WithClientType set the exchType property of the client.
+func WithClientType(t ExchangeType) ConfigFunc {
+	return func(c *Client) {
+		c.exchType = t
 	}
 }
 
-// ExchangeName set the exchName property of the exchange.
+// ExchangeName set the exchName property of the client.
 func ExchangeName(name string) ConfigFunc {
-	return func(e *Exchange) {
-		e.exchName = name
+	return func(c *Client) {
+		c.exchName = name
 	}
 }
 
-// ConsumerName set the consumerName property of the exchange.
+// ConsumerName set the consumerName property of the client.
 func ConsumerName(name string) ConfigFunc {
-	return func(e *Exchange) {
-		e.consumerName = name
+	return func(c *Client) {
+		c.consumerName = name
 	}
 }
 
-// DurableExchange set the durable property of the exchange.
-func DurableExchange(b bool) ConfigFunc {
-	return func(e *Exchange) {
-		e.durable = b
+// DurableClient set the durable property of the client.
+func DurableClient(b bool) ConfigFunc {
+	return func(c *Client) {
+		c.durable = b
 	}
 }
 
-// AutoDeleteExchange set the autoDelete property of the exchange.
-func AutoDeleteExchange(b bool) ConfigFunc {
-	return func(e *Exchange) {
-		e.autoDelete = b
+// AutoDeleteClient set the autoDelete property of the client.
+func AutoDeleteClient(b bool) ConfigFunc {
+	return func(c *Client) {
+		c.autoDelete = b
 	}
 }
 
-// InternalExchange set the internal property of the exchange.
-func InternalExchange(b bool) ConfigFunc {
-	return func(e *Exchange) {
-		e.internal = b
+// InternalClient set the internal property of the client.
+func InternalClient(b bool) ConfigFunc {
+	return func(c *Client) {
+		c.internal = b
 	}
 }
 
-// NoWaitExchange set the noWait property of the exchange.
-func NoWaitExchange(b bool) ConfigFunc {
-	return func(e *Exchange) {
-		e.noWait = b
+// NoWaitClient set the noWait property of the client.
+func NoWaitClient(b bool) ConfigFunc {
+	return func(c *Client) {
+		c.noWait = b
 	}
 }
