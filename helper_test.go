@@ -59,6 +59,8 @@ func getNamedClient(t *testing.T, exchange, queueName string) *harego.Client {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
+		rabbit, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s/", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr))
+		require.NoErrorf(t, err, "connecting to RabbitMQ: username: %q, password: %q, location: %s", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr)
 		ch, err := rabbit.Channel()
 		require.NoError(t, err)
 		err = ch.ExchangeDelete(exchange, false, false)

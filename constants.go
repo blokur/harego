@@ -8,12 +8,20 @@ import "github.com/streadway/amqp"
 type AckType int
 
 const (
-	// AckTypeAck causes the message to be removed in broker.
+	// AckTypeAck causes the message to be removed in broker. The multiple value is
+	// false, causing the broker to act on one message.
 	AckTypeAck AckType = iota
-	// AckTypeNack causes the message to be requeued in broker.
+
+	// AckTypeNack causes the message to be requeued in broker. The multiple value
+	// is false, causing the broker to act on one message.
 	AckTypeNack
-	// AckTypeReject causes the message to be dropped in broker.
+
+	// AckTypeReject causes the message to be dropped in broker. AckTypeNack must
+	// not be used to select or requeue messages the client wishes not to handle,
+	// rather it is to inform the server that the client is incapable of handling
+	// this message at this time.
 	AckTypeReject
+
 	// AckTypeRequeue causes the message to be requeued back to the end of the
 	// queue.
 	AckTypeRequeue
