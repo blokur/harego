@@ -134,11 +134,6 @@ func (c *Client) publishWorkers(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "binding queue")
 	}
-	fn := func(msg *amqp.Publishing) error {
-		msg.DeliveryMode = uint8(c.deliveryMode)
-		err = c.channel.Publish(c.exchName, c.routingKey, false, false, *msg)
-		return errors.Wrap(err, "publishing message")
-	}
 
 	go func() {
 		for msg := range c.pubCh {
@@ -147,7 +142,9 @@ func (c *Client) publishWorkers(ctx context.Context) error {
 				return
 			default:
 			}
-			msg.errCh <- fn(msg.msg)
+			msg.msg.DeliveryMode = uint8(c.deliveryMode)
+			err = c.channel.Publish(c.exchName, c.routingKey, false, false, *msg.msg)
+			msg.errCh <- errors.Wrap(err, "publishing message")
 		}
 	}()
 	return nil
@@ -161,6 +158,9 @@ func (c *Client) publishWorkers(ctx context.Context) error {
 func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if c.closed {
 		return ErrClosed
+	}
+	if handler == nil {
+		return ErrNilHnadler
 	}
 	ctx, c.cancel = context.WithCancel(ctx)
 	msgs, err := c.channel.Consume(
@@ -210,6 +210,9 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 
 // Close closes the channel and the connection.
 func (c *Client) Close() error {
+	if c.closed {
+		return ErrClosed
+	}
 	c.once.Do(func() {
 		c.cancel()
 		c.closed = true
@@ -231,8 +234,6 @@ func (c *Client) Close() error {
 	}
 	return err.ErrorOrNil()
 }
-
-// func (c *Client) Clone()
 
 func (c *Client) validate() error {
 	if c.conn == nil {

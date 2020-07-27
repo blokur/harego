@@ -3,6 +3,7 @@ module github.com/blokur/harego
 go 1.14
 
 require (
+	github.com/blokur/testament v0.0.1
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/hashicorp/go-multierror v1.1.0
 	github.com/mitchellh/mapstructure v1.3.3 // indirect

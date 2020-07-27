@@ -6,21 +6,15 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// RabbitmqMock is used for mocking the RabbitMQ connection.
-//go:generate mockery -name RabbitmqMock -filename rabbitmq_mock.go
-//nolint:unused // this is used to create the mocks.
-type RabbitmqMock interface {
-	RabbitMQ
-	Channel
-}
-
 // RabbitMQ defines a rabbitmq exchange.
+//go:generate mockery -name RabbitMQ -filename rabbitmq_mock.go
 type RabbitMQ interface {
 	Channel() (Channel, error)
 	Close() error
 }
 
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
+//go:generate mockery -name Channel -filename channel_mock.go
 type Channel interface {
 	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
 	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
