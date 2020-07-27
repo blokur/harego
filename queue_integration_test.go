@@ -20,7 +20,6 @@ func TestIntegClient(t *testing.T) {
 	t.Run("Consume", testIntegClientConsume)
 	t.Run("SeparatedConsumePublish", testIntegClientSeparatedConsumePublish)
 	t.Run("UseSameQueue", testIntegClientUseSameQueue)
-	t.Run("Close", testIntegClientClose)
 	t.Run("Reconnect", testIntegClientReconnect)
 }
 
@@ -243,7 +242,51 @@ func testIntegClientConsumeReject(t *testing.T) {
 }
 
 func testIntegClientConsumeRequeue(t *testing.T) {
-	t.Skip("not implemented")
+	t.Parallel()
+	exchange := "test." + randomString(20)
+	queueName := "test." + randomString(20)
+	pub := getNamedClient(t, exchange, queueName)
+	cons := getNamedClient(t, exchange, queueName)
+
+	message := func(i int) string { return fmt.Sprintf("message #%d", i) }
+	total := 100
+	gotMsgs := make([]string, 0, total)
+	wantMsgs := make([]string, 0, total)
+	mid := total / 2
+	for i := 0; i < total; i++ {
+		msg := message(i)
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(msg),
+		})
+		require.NoError(t, err)
+		if i == mid {
+			continue
+		}
+		wantMsgs = append(wantMsgs, msg)
+	}
+	wantMsg := message(mid)
+	wantMsgs = append(wantMsgs, wantMsg)
+
+	assert.Eventually(t, func() bool {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		counter := 0
+		err := cons.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+			counter++
+			if string(msg.Body) == wantMsg && counter < total-1 {
+				return harego.AckTypeRequeue, 0
+			}
+			gotMsgs = append(gotMsgs, string(msg.Body))
+			if counter > total {
+				cancel()
+			}
+			return harego.AckTypeAck, 0
+		})
+		assert.EqualError(t, err, ctx.Err().Error())
+		return true
+	}, time.Minute, 10*time.Millisecond)
+
+	assert.EqualValues(t, wantMsgs, gotMsgs)
 }
 
 func testIntegClientSeparatedConsumePublish(t *testing.T) {
@@ -378,10 +421,6 @@ func testIntegClientUseSameQueue(t *testing.T) {
 	mu.RLock()
 	defer mu.RUnlock()
 	assert.ElementsMatch(t, want, got)
-}
-
-func testIntegClientClose(t *testing.T) {
-	t.Skip("not implemented")
 }
 
 func testIntegClientReconnect(t *testing.T) {

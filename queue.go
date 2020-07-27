@@ -194,9 +194,16 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 					case AckTypeReject:
 						time.Sleep(delay)
 						msg.Reject(false)
-						// case AckTypeRequeue:
-						// 	msg.Reject(false)
-						// 	c.pubCh <- msg
+					case AckTypeRequeue:
+						err := c.Publish(&amqp.Publishing{
+							Body: msg.Body,
+						})
+						switch err {
+						case nil:
+							msg.Reject(false)
+						default:
+							msg.Nack(false, true)
+						}
 					}
 				case <-ctx.Done():
 					return
