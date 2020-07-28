@@ -64,6 +64,22 @@ func (_m *Channel) ExchangeDeclare(name string, kind string, durable bool, autoD
 	return r0
 }
 
+// NotifyClose provides a mock function with given fields: receiver
+func (_m *Channel) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
+	ret := _m.Called(receiver)
+
+	var r0 chan *amqp.Error
+	if rf, ok := ret.Get(0).(func(chan *amqp.Error) chan *amqp.Error); ok {
+		r0 = rf(receiver)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(chan *amqp.Error)
+		}
+	}
+
+	return r0
+}
+
 // Publish provides a mock function with given fields: exchange, key, mandatory, immediate, msg
 func (_m *Channel) Publish(exchange string, key string, mandatory bool, immediate bool, msg amqp.Publishing) error {
 	ret := _m.Called(exchange, key, mandatory, immediate, msg)

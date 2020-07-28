@@ -23,9 +23,12 @@ type Channel interface {
 	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
 	Qos(prefetchCount, prefetchSize int, global bool) error
 	Close() error
+	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
 }
 
 // A HandlerFunc receives a message when it is available. The returned AckType
 // dictates how to deal with the message. The delay can be 0 or any duration.
-// The consumer will sleep this amount before sending Ack.
-type HandlerFunc func(amqp.Delivery) (a AckType, delay time.Duration)
+// The consumer will sleep this amount before sending Ack. If the user needs to
+// requeue the message, they may mutate the message if required. Mutate the msg
+// at your own peril.
+type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)

@@ -28,38 +28,46 @@ func TestNewClient(t *testing.T) {
 
 func testNewClientBadInput(t *testing.T) {
 	t.Parallel()
+	conn := harego.Connection(&mocks.RabbitMQ{})
 	tcs := []struct {
 		msg  string
 		conf []harego.ConfigFunc
 	}{
-		{"connection", []harego.ConfigFunc{
-			harego.WithRabbitMQMock(nil),
-		}},
+		{"connection", []harego.ConfigFunc{}},
 		{"workers", []harego.ConfigFunc{
+			conn,
 			harego.Workers(0),
 		}},
 		{"consumer name", []harego.ConfigFunc{
+			conn,
 			harego.ConsumerName(""),
 		}},
 		{"queue name", []harego.ConfigFunc{
+			conn,
 			harego.QueueName(""),
 		}},
 		{"exchange name", []harego.ConfigFunc{
+			conn,
 			harego.ExchangeName(""),
 		}},
 		{"exchange type", []harego.ConfigFunc{
+			conn,
 			harego.WithExchangeType(-1),
 		}},
 		{"exchange type", []harego.ConfigFunc{
+			conn,
 			harego.WithExchangeType(9999999),
 		}},
 		{"prefetch count", []harego.ConfigFunc{
+			conn,
 			harego.PrefetchCount(0),
 		}},
 		{"prefetch size", []harego.ConfigFunc{
+			conn,
 			harego.PrefetchSize(-1),
 		}},
 		{"delivery mode", []harego.ConfigFunc{
+			conn,
 			harego.WithDeliveryMode(10),
 		}},
 	}
@@ -67,7 +75,7 @@ func testNewClientBadInput(t *testing.T) {
 		tc := tc
 		name := fmt.Sprintf("%d_%s", i, tc.msg)
 		t.Run(name, func(t *testing.T) {
-			_, err := harego.NewClient(nil,
+			_, err := harego.NewClient("",
 				tc.conf...,
 			)
 			require.Error(t, err)
@@ -81,8 +89,8 @@ func testNewClientChannel(t *testing.T) {
 	r := &mocks.RabbitMQ{}
 	defer r.AssertExpectations(t)
 	r.On("Channel").Return(nil, assert.AnError).Once()
-	_, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	_, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -97,8 +105,8 @@ func testNewClientQos(t *testing.T) {
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	_, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -116,8 +124,8 @@ func testNewClientQueueDeclare(t *testing.T) {
 		mock.Anything, mock.Anything).
 		Return(amqp.Queue{}, assert.AnError).Once()
 
-	_, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	_, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -138,8 +146,8 @@ func testNewClientExchangeDeclare(t *testing.T) {
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	_, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -153,14 +161,11 @@ func testNewClientQueueBind(t *testing.T) {
 	prefetchCount := rand.Intn(9999)
 	prefetchSize := rand.Intn(9999)
 	queue := randomString(10)
-	durable := true
-	autoDelete := true
-	noWait := true
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", queue, durable, autoDelete, mock.Anything,
-		noWait, mock.Anything).
+	ch.On("QueueDeclare", queue, true, true, mock.Anything,
+		true, mock.Anything).
 		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
@@ -168,14 +173,14 @@ func testNewClientQueueBind(t *testing.T) {
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	_, err := harego.NewClient("",
+		harego.Connection(r),
 		harego.PrefetchCount(prefetchCount),
 		harego.PrefetchSize(prefetchSize),
 		harego.QueueName(queue),
-		harego.Durable(durable),
-		harego.AutoDelete(autoDelete),
-		harego.NoWait(noWait),
+		harego.Durable,
+		harego.AutoDelete,
+		harego.NoWait,
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -208,9 +213,11 @@ func testClientPublishAlreadyClosed(t *testing.T) {
 		Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	require.NoError(t, err)
 
@@ -238,30 +245,27 @@ func testClientPublishPublishError(t *testing.T) {
 
 	exchName := randomString(10)
 	exchType := harego.ExchangeTypeFanout
-	durable := true
-	autoDelete := true
-	internal := true
-	noWait := true
 	ch.On("ExchangeDeclare",
-		exchName,
+		mock.MatchedBy(func(name string) bool {
+			assert.Contains(t, name, exchName)
+			return true
+		}),
 		exchType.String(),
-		durable,
-		autoDelete,
-		internal,
-		noWait,
-		mock.Anything,
+		true, true, true, true, mock.Anything,
 	).Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 		harego.ExchangeName(exchName),
 		harego.WithExchangeType(exchType),
-		harego.Durable(durable),
-		harego.AutoDelete(autoDelete),
-		harego.Internal(internal),
-		harego.NoWait(noWait),
+		harego.Durable,
+		harego.AutoDelete,
+		harego.Internal,
+		harego.NoWait,
 	)
 	require.NoError(t, err)
 
@@ -294,15 +298,16 @@ func testClientConsumeChannelError(t *testing.T) {
 		Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
 	queueName := randomString(10)
 	consumerName := randomString(10)
-	noWait := true
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 		harego.QueueName(queueName),
 		harego.ConsumerName(consumerName),
-		harego.NoWait(noWait),
+		harego.NoWait,
 	)
 	require.NoError(t, err)
 
@@ -310,12 +315,12 @@ func testClientConsumeChannelError(t *testing.T) {
 		queueName,
 		consumerName,
 		mock.Anything, mock.Anything, mock.Anything,
-		noWait,
+		true,
 		mock.Anything,
 	).Return(nil, assert.AnError).Once()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err = cl.Consume(ctx, func(amqp.Delivery) (a harego.AckType, delay time.Duration) { return 0, 0 })
+	err = cl.Consume(ctx, func(*amqp.Delivery) (a harego.AckType, delay time.Duration) { return 0, 0 })
 	testament.AssertInError(t, err, assert.AnError)
 }
 
@@ -336,9 +341,11 @@ func testClientConsumeNilHandler(t *testing.T) {
 		Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	require.NoError(t, err)
 
@@ -365,9 +372,11 @@ func testClientConsumeCancelledContext(t *testing.T) {
 		Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	require.NoError(t, err)
 
@@ -382,7 +391,7 @@ func testClientConsumeCancelledContext(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	err = cl.Consume(ctx, func(d amqp.Delivery) (a harego.AckType, delay time.Duration) {
+	err = cl.Consume(ctx, func(d *amqp.Delivery) (a harego.AckType, delay time.Duration) {
 		select {
 		case <-ctx.Done():
 			t.Errorf("didn't expect to receive a call for: %q", d.Body)
@@ -427,9 +436,11 @@ func testClientCloseAlreadyClosed(t *testing.T) {
 		Return(nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
 
-	cl, err := harego.NewClient(nil,
-		harego.WithRabbitMQMock(r),
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
 	)
 	require.NoError(t, err)
 
@@ -475,9 +486,11 @@ func testClientCloseErrors(t *testing.T) {
 				Return(nil).Once()
 			ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
+			ch.On("NotifyClose", mock.Anything).
+				Return(make(chan *amqp.Error, 10)).Once()
 
-			cl, err := harego.NewClient(nil,
-				harego.WithRabbitMQMock(r),
+			cl, err := harego.NewClient("",
+				harego.Connection(r),
 			)
 			require.NoError(t, err)
 

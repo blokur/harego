@@ -20,6 +20,7 @@ func TestIntegClient(t *testing.T) {
 	t.Run("Consume", testIntegClientConsume)
 	t.Run("SeparatedConsumePublish", testIntegClientSeparatedConsumePublish)
 	t.Run("UseSameQueue", testIntegClientUseSameQueue)
+	t.Run("PublishWorkers", testIntegClientPublishWorkers)
 	t.Run("Reconnect", testIntegClientReconnect)
 }
 
@@ -131,7 +132,7 @@ func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		err := cons.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			muGot.Lock()
 			defer muGot.Unlock()
 			got = append(got, string(msg.Body))
@@ -179,7 +180,7 @@ func testIntegClientConsumeNack(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		err = cons1.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err = cons1.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			cancel()
 			return harego.AckTypeNack, 0
 		})
@@ -190,7 +191,7 @@ func testIntegClientConsumeNack(t *testing.T) {
 
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithCancel(context.Background())
-		err := cons2.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons2.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			assert.Equal(t, original, string(msg.Body))
 			cancel()
 			return harego.AckTypeAck, 0
@@ -219,7 +220,7 @@ func testIntegClientConsumeReject(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		err = cons1.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err = cons1.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			cancel()
 			return harego.AckTypeReject, 0
 		})
@@ -233,7 +234,7 @@ func testIntegClientConsumeReject(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), duration+2*time.Second)
 		defer cancel()
-		cons2.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		cons2.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			t.Errorf("didn't expect to receive %q", string(msg.Body))
 			return harego.AckTypeReject, 0
 		})
@@ -271,7 +272,7 @@ func testIntegClientConsumeRequeue(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		counter := 0
-		err := cons.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			counter++
 			if string(msg.Body) == wantMsg && counter < total-1 {
 				return harego.AckTypeRequeue, 0
@@ -328,7 +329,7 @@ func testIntegClientSeparatedConsumePublish(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		err := cons1.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons1.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			mu1.Lock()
 			defer mu1.Unlock()
 			got1 = append(got1, string(msg.Body))
@@ -337,7 +338,7 @@ func testIntegClientSeparatedConsumePublish(t *testing.T) {
 		assert.EqualError(t, err, ctx.Err().Error())
 	}()
 	go func() {
-		err := cons2.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons2.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			mu2.Lock()
 			defer mu2.Unlock()
 			got2 = append(got2, string(msg.Body))
@@ -399,7 +400,7 @@ func testIntegClientUseSameQueue(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go func() {
-		err := cons.Consume(ctx, func(msg amqp.Delivery) (harego.AckType, time.Duration) {
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 			mu.Lock()
 			defer mu.Unlock()
 			got = append(got, string(msg.Body))
@@ -410,6 +411,54 @@ func testIntegClientUseSameQueue(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		mu.RLock()
 		defer mu.RUnlock()
+		if len(want) == len(got) {
+			cancel()
+			return true
+		}
+		return false
+	}, time.Minute, 10*time.Millisecond)
+	mu.RLock()
+	defer mu.RUnlock()
+	assert.ElementsMatch(t, want, got)
+}
+
+func testIntegClientPublishWorkers(t *testing.T) {
+	t.Parallel()
+	exchange1 := "test." + randomString(20)
+	exchange2 := "test." + randomString(20)
+	queueName := "test." + randomString(20)
+
+	pub := getNamedClient(t, exchange1, queueName)
+	harego.Workers(10)(pub)
+	cons := getNamedClient(t, exchange2, queueName)
+
+	var (
+		want []string
+		mu   sync.RWMutex
+		got  []string
+	)
+	total := 1000
+	for i := 0; i < total; i++ {
+		msg := fmt.Sprintf("Message: [i:%d]", i)
+		want = append(want, msg)
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(msg),
+		})
+		require.NoError(t, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, string(msg.Body))
+			return harego.AckTypeAck, 0
+		})
+		assert.EqualError(t, err, ctx.Err().Error())
+	}()
+	assert.Eventually(t, func() bool {
 		mu.RLock()
 		defer mu.RUnlock()
 		if len(want) == len(got) {
@@ -424,5 +473,135 @@ func testIntegClientUseSameQueue(t *testing.T) {
 }
 
 func testIntegClientReconnect(t *testing.T) {
-	t.Skip("not implemented")
+	t.Run("Publish", testIntegClientReconnectPublish)
+	t.Run("Consume", testIntegClientReconnectConsume)
+}
+
+func testIntegClientReconnectPublish(t *testing.T) {
+	t.Parallel()
+	if testing.Short() {
+		t.Skip("slow test")
+	}
+	exchange1 := "test." + randomString(20)
+	exchange2 := "test." + randomString(20)
+	queueName := "test." + randomString(20)
+	container, addr := getContainer(t)
+	pub, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange1),
+		harego.QueueName(queueName),
+		harego.Workers(10),
+	)
+	require.NoError(t, err)
+
+	cons, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange2),
+		harego.QueueName(queueName),
+	)
+	require.NoError(t, err)
+
+	var (
+		want []string
+		mu   sync.RWMutex
+		got  []string
+	)
+	total := 1000
+	for i := 0; i < total; i++ {
+		msg := fmt.Sprintf("Message: [i:%d]", i)
+		want = append(want, msg)
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(msg),
+		})
+		require.NoError(t, err)
+		if i%(total/5) == 0 {
+			restartRabbitMQ(t, container)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, string(msg.Body))
+			return harego.AckTypeAck, 0
+		})
+		assert.EqualError(t, err, ctx.Err().Error())
+	}()
+	assert.Eventually(t, func() bool {
+		mu.RLock()
+		defer mu.RUnlock()
+		if len(want) == len(got) {
+			cancel()
+			return true
+		}
+		return false
+	}, time.Minute, 10*time.Millisecond)
+	assert.ElementsMatch(t, want, got)
+}
+
+func testIntegClientReconnectConsume(t *testing.T) {
+	t.Parallel()
+	t.Skip("not implemented yet")
+	if testing.Short() {
+		t.Skip("slow test")
+	}
+	exchange1 := "test." + randomString(20)
+	exchange2 := "test." + randomString(20)
+	queueName := "test." + randomString(20)
+	container, addr := getContainer(t)
+	pub, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange1),
+		harego.QueueName(queueName),
+		harego.Workers(10),
+	)
+	require.NoError(t, err)
+
+	cons, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange2),
+		harego.QueueName(queueName),
+	)
+	require.NoError(t, err)
+
+	var (
+		want []string
+		mu   sync.RWMutex
+		got  []string
+	)
+	total := 1000
+	for i := 0; i < total; i++ {
+		msg := fmt.Sprintf("Message: [i:%d]", i)
+		want = append(want, msg)
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(msg),
+		})
+		require.NoError(t, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		var i int
+		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+			mu.Lock()
+			defer mu.Unlock()
+			i++
+			if i%(total/5) == 0 {
+				restartRabbitMQ(t, container)
+			}
+			got = append(got, string(msg.Body))
+			return harego.AckTypeAck, 0
+		})
+		assert.EqualError(t, err, ctx.Err().Error())
+	}()
+	assert.Eventually(t, func() bool {
+		mu.RLock()
+		defer mu.RUnlock()
+		if len(want) == len(got) {
+			cancel()
+			return true
+		}
+		return false
+	}, time.Minute/10, 10*time.Millisecond)
+	assert.ElementsMatch(t, want, got)
 }

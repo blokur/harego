@@ -1,6 +1,7 @@
 package harego_test
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -13,6 +14,8 @@ import (
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func init() {
@@ -51,16 +54,15 @@ func getClient(t *testing.T) *harego.Client {
 
 func getNamedClient(t *testing.T, exchange, queueName string) *harego.Client {
 	t.Helper()
-	rabbit, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s/", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr))
-	require.NoErrorf(t, err, "connecting to RabbitMQ: username: %q, password: %q, location: %s", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr)
-	e, err := harego.NewClient(rabbit,
+	url := fmt.Sprintf("amqp://%s:%s@%s/", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr)
+	e, err := harego.NewClient(url,
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		rabbit, err := amqp.Dial(fmt.Sprintf("amqp://%s:%s@%s/", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr))
-		require.NoErrorf(t, err, "connecting to RabbitMQ: username: %q, password: %q, location: %s", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr)
+		rabbit, err := amqp.Dial(url)
+		require.NoErrorf(t, err, "connecting to RabbitMQ: %s", url)
 		ch, err := rabbit.Channel()
 		require.NoError(t, err)
 		err = ch.ExchangeDelete(exchange, false, false)
@@ -71,4 +73,54 @@ func getNamedClient(t *testing.T, exchange, queueName string) *harego.Client {
 		e.Close()
 	})
 	return e
+}
+
+// getContainer returns a new container running rabbimq that is ready for
+// accepting connections.
+func getContainer(t *testing.T) (container testcontainers.Container, addr string) {
+	t.Helper()
+	ctx := context.Background()
+	req := testcontainers.ContainerRequest{
+		Image:        "rabbitmq:3.8-management-alpine",
+		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
+		WaitingFor:   wait.ForListeningPort("5672/tcp"),
+	}
+	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+
+	ip, err := container.Host(ctx)
+	require.NoError(t, err)
+
+	port, err := container.MappedPort(ctx, "5672")
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		container.Terminate(ctx)
+	})
+	return container, fmt.Sprintf("amqp://%s:%s/", ip, port.Port())
+}
+
+// restartRabbitMQ restarts the rabbitmq server inside the container.
+func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err := container.Exec(ctx, []string{
+		"rabbitmqctl",
+		"stop_app",
+	})
+	require.NoError(t, err)
+
+	_, err = container.Exec(ctx, []string{
+		"rabbitmqctl",
+		"start_app",
+	})
+	require.NoError(t, err)
+
+	c := container.(*testcontainers.DockerContainer)
+	err = c.WaitingFor.WaitUntilReady(ctx, c)
+	require.NoError(t, err)
 }

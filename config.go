@@ -6,29 +6,18 @@ import (
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.
 type rabbitWrapper struct {
-	conn *amqp.Connection
-}
-
-func (r *rabbitWrapper) Close() error {
-	return r.conn.Close()
+	*amqp.Connection
 }
 
 func (r *rabbitWrapper) Channel() (Channel, error) {
-	return r.conn.Channel()
+	return r.Connection.Channel()
 }
 
 // ConfigFunc is a function for setting up the Client.
 type ConfigFunc func(*Client)
 
 // Connection sets the RabbitMQ connection.
-func Connection(conn *amqp.Connection) ConfigFunc {
-	return func(c *Client) {
-		c.conn = &rabbitWrapper{conn: conn}
-	}
-}
-
-// WithRabbitMQMock sets up a mock version of RabbitMQ.
-func WithRabbitMQMock(r RabbitMQ) ConfigFunc {
+func Connection(r RabbitMQ) ConfigFunc {
 	return func(c *Client) {
 		c.conn = r
 	}
@@ -89,7 +78,8 @@ func WithExchangeType(t ExchangeType) ConfigFunc {
 	}
 }
 
-// ExchangeName sets the exchange name.
+// ExchangeName sets the exchange name. For each worker, and additional string
+// will be appended for the worker number.
 func ExchangeName(name string) ConfigFunc {
 	return func(c *Client) {
 		c.exchName = name
@@ -104,33 +94,25 @@ func ConsumerName(name string) ConfigFunc {
 }
 
 // Durable marks the exchange and the queue to be durable.
-func Durable(b bool) ConfigFunc {
-	return func(c *Client) {
-		c.durable = b
-	}
+func Durable(c *Client) {
+	c.durable = true
 }
 
 // AutoDelete marks the exchange and queues with autoDelete property which
 // causes the messages to be automatically removed from the queue when
 // consumed.
-func AutoDelete(b bool) ConfigFunc {
-	return func(c *Client) {
-		c.autoDelete = b
-	}
+func AutoDelete(c *Client) {
+	c.autoDelete = true
 }
 
 // Internal sets the exchange to be internal.
-func Internal(b bool) ConfigFunc {
-	return func(c *Client) {
-		c.internal = b
-	}
+func Internal(c *Client) {
+	c.internal = true
 }
 
 // NoWait marks the exchange as noWait. When noWait is true, declare
 // without waiting for a confirmation from the server. The channel may be closed
 // as a result of an error.
-func NoWait(b bool) ConfigFunc {
-	return func(c *Client) {
-		c.noWait = b
-	}
+func NoWait(c *Client) {
+	c.noWait = true
 }

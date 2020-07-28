@@ -2,6 +2,8 @@ package harego
 
 import (
 	"context"
+	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -16,9 +18,16 @@ import (
 // not usable.
 //nolint:maligned // most likely not an issue, but cleaner this way.
 type Client struct {
-	conn         RabbitMQ
+	url          string
 	workers      int
 	consumerName string
+	retryCount   int
+	retryDelay   time.Duration
+
+	mu      sync.RWMutex
+	conn    RabbitMQ
+	channel Channel
+	queue   amqp.Queue
 
 	// queue properties.
 	queueName  string
@@ -40,8 +49,6 @@ type Client struct {
 
 	pubChBuff int
 	pubCh     chan *publishMsg
-	channel   Channel
-	queue     amqp.Queue
 	once      sync.Once
 	cancel    func()
 	closed    bool
@@ -52,11 +59,12 @@ type publishMsg struct {
 	errCh chan error
 }
 
-// NewClient returns an Client instance on the default exchange.
-func NewClient(conn *amqp.Connection, conf ...ConfigFunc) (*Client, error) {
+// NewClient returns an Client instance on the default exchange. You should
+// either provide a valid url or pass the Connection config function.
+func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		conn:          &rabbitWrapper{conn: conn},
+		url:           url,
 		exchName:      "default",
 		queueName:     "harego",
 		workers:       1,
@@ -68,6 +76,8 @@ func NewClient(conn *amqp.Connection, conf ...ConfigFunc) (*Client, error) {
 		durable:       true,
 		pubChBuff:     10,
 		consumerName:  internal.GetRandomName(),
+		retryCount:    40,
+		retryDelay:    100 * time.Millisecond,
 	}
 	for _, cnf := range conf {
 		cnf(c)
@@ -75,6 +85,13 @@ func NewClient(conn *amqp.Connection, conf ...ConfigFunc) (*Client, error) {
 	err := c.validate()
 	if err != nil {
 		return nil, errors.Wrap(err, "validating configuration")
+	}
+	if c.conn == nil {
+		conn, err := amqp.Dial(url)
+		if err != nil {
+			return nil, errors.Wrapf(err, "dialling %q", url)
+		}
+		c.conn = &rabbitWrapper{conn}
 	}
 	c.channel, err = c.conn.Channel()
 	if err != nil {
@@ -97,14 +114,17 @@ func NewClient(conn *amqp.Connection, conf ...ConfigFunc) (*Client, error) {
 		return nil, errors.Wrap(err, "declaring queue")
 	}
 	c.pubCh = make(chan *publishMsg, c.pubChBuff)
-	err = c.publishWorkers(ctx)
-	if err != nil {
-		return nil, errors.Wrap(err, "starting workers")
+	for i := 0; i < c.workers; i++ {
+		err = c.publishWorker(ctx, i)
+		if err != nil {
+			return nil, errors.Wrap(err, "starting workers")
+		}
 	}
+	c.registerReconnect(ctx)
 	return c, nil
 }
 
-// Publish sends the msg to the queue.
+// Publish sends the msg to the broker on one of the workers.
 func (c *Client) Publish(msg *amqp.Publishing) error {
 	if c.closed {
 		return ErrClosed
@@ -117,9 +137,12 @@ func (c *Client) Publish(msg *amqp.Publishing) error {
 	return <-err
 }
 
-func (c *Client) publishWorkers(ctx context.Context) error {
+func (c *Client) publishWorker(ctx context.Context, i int) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	exchName := c.exchName + "_" + strconv.Itoa(i)
 	err := c.channel.ExchangeDeclare(
-		c.exchName,
+		exchName,
 		c.exchType.String(),
 		c.durable,
 		c.autoDelete,
@@ -130,7 +153,13 @@ func (c *Client) publishWorkers(ctx context.Context) error {
 	if err != nil {
 		return errors.Wrap(err, "declaring exchange")
 	}
-	err = c.channel.QueueBind(c.queueName, c.routingKey, c.exchName, c.noWait, nil)
+	err = c.channel.QueueBind(
+		c.queueName,
+		c.routingKey,
+		exchName,
+		c.noWait,
+		nil,
+	)
 	if err != nil {
 		return errors.Wrap(err, "binding queue")
 	}
@@ -143,7 +172,13 @@ func (c *Client) publishWorkers(ctx context.Context) error {
 			default:
 			}
 			msg.msg.DeliveryMode = uint8(c.deliveryMode)
-			err = c.channel.Publish(c.exchName, c.routingKey, false, false, *msg.msg)
+			err = c.channel.Publish(
+				exchName,
+				c.routingKey,
+				false,
+				false,
+				*msg.msg,
+			)
 			msg.errCh <- errors.Wrap(err, "publishing message")
 		}
 	}()
@@ -163,6 +198,7 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 		return ErrNilHnadler
 	}
 	ctx, c.cancel = context.WithCancel(ctx)
+	c.mu.RLock()
 	msgs, err := c.channel.Consume(
 		c.queueName,
 		c.consumerName,
@@ -172,6 +208,7 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 		c.noWait,
 		nil,
 	)
+	c.mu.RUnlock()
 	if err != nil {
 		return errors.Wrap(err, "getting consume channel")
 	}
@@ -183,7 +220,7 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 			for {
 				select {
 				case msg := <-msgs:
-					a, delay := handler(msg)
+					a, delay := handler(&msg)
 					switch a {
 					case AckTypeAck:
 						time.Sleep(delay)
@@ -196,11 +233,24 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 						msg.Reject(false)
 					case AckTypeRequeue:
 						err := c.Publish(&amqp.Publishing{
-							Body: msg.Body,
+							Body:            msg.Body,
+							Headers:         msg.Headers,
+							ContentType:     msg.ContentType,
+							ContentEncoding: msg.ContentEncoding,
+							DeliveryMode:    msg.DeliveryMode,
+							Priority:        msg.Priority,
+							CorrelationId:   msg.CorrelationId,
+							ReplyTo:         msg.ReplyTo,
+							Expiration:      msg.Expiration,
+							MessageId:       msg.MessageId,
+							Timestamp:       msg.Timestamp,
+							Type:            msg.Type,
+							UserId:          msg.UserId,
+							AppId:           msg.AppId,
 						})
 						switch err {
 						case nil:
-							msg.Reject(false)
+							msg.Ack(false)
 						default:
 							msg.Nack(false, true)
 						}
@@ -217,6 +267,8 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 
 // Close closes the channel and the connection.
 func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.closed {
 		return ErrClosed
 	}
@@ -243,7 +295,7 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) validate() error {
-	if c.conn == nil {
+	if c.conn == nil && c.url == "" {
 		return errors.Wrap(ErrInput, "empty RabbitMQ connection")
 	}
 	if c.workers < 1 {
@@ -271,4 +323,40 @@ func (c *Client) validate() error {
 		return errors.Wrapf(ErrInput, "delivery mode: %q", c.deliveryMode.String())
 	}
 	return nil
+}
+
+func (c *Client) registerReconnect(ctx context.Context) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	ch := c.channel.NotifyClose(make(chan *amqp.Error))
+	go func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ch:
+			dial := func() error {
+				conn, err := amqp.Dial(c.url)
+				if err != nil {
+					return err
+				}
+				c.mu.Lock()
+				defer c.mu.Unlock()
+				c.conn = &rabbitWrapper{conn}
+				c.channel, err = c.conn.Channel()
+				return err
+			}
+			var err error
+			for i := 0; i < c.retryCount; i++ {
+				err = dial()
+				if err == nil {
+					break
+				}
+				time.Sleep(c.retryDelay)
+			}
+			if err != nil {
+				log.Fatal(err)
+			}
+			c.registerReconnect(ctx)
+		}
+	}()
 }
