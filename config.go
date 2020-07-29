@@ -9,6 +9,7 @@ type rabbitWrapper struct {
 	*amqp.Connection
 }
 
+// Channel returns the underlying channel.
 func (r *rabbitWrapper) Channel() (Channel, error) {
 	return r.Connection.Channel()
 }
@@ -20,6 +21,13 @@ type ConfigFunc func(*Client)
 func Connection(r RabbitMQ) ConfigFunc {
 	return func(c *Client) {
 		c.conn = r
+	}
+}
+
+// AMQP uses the connection for the broker.
+func AMQP(r *amqp.Connection) ConfigFunc {
+	return func(c *Client) {
+		c.conn = &rabbitWrapper{r}
 	}
 }
 
