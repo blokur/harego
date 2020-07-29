@@ -2,7 +2,6 @@ package harego
 
 import (
 	"context"
-	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -21,7 +20,6 @@ type Client struct {
 	url          string
 	workers      int
 	consumerName string
-	retryCount   int
 	retryDelay   time.Duration
 
 	mu      sync.RWMutex
@@ -60,7 +58,9 @@ type publishMsg struct {
 }
 
 // NewClient returns an Client instance on the default exchange. You should
-// either provide a valid url or pass the Connection config function.
+// provide a valid url for reconnection. If you pass a Connection config
+// function, it will initiate it for the first time, not when reconnecting; make
+// sure you also provide a valid url as well.
 func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &Client{
@@ -76,7 +76,6 @@ func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 		durable:       true,
 		pubChBuff:     10,
 		consumerName:  internal.GetRandomName(),
-		retryCount:    40,
 		retryDelay:    100 * time.Millisecond,
 	}
 	for _, cnf := range conf {
@@ -163,7 +162,6 @@ func (c *Client) publishWorker(ctx context.Context, i int) error {
 	if err != nil {
 		return errors.Wrap(err, "binding queue")
 	}
-
 	go func() {
 		for msg := range c.pubCh {
 			select {
@@ -172,6 +170,7 @@ func (c *Client) publishWorker(ctx context.Context, i int) error {
 			default:
 			}
 			msg.msg.DeliveryMode = uint8(c.deliveryMode)
+			c.mu.RLock()
 			err = c.channel.Publish(
 				exchName,
 				c.routingKey,
@@ -179,6 +178,7 @@ func (c *Client) publishWorker(ctx context.Context, i int) error {
 				false,
 				*msg.msg,
 			)
+			c.mu.RUnlock()
 			msg.errCh <- errors.Wrap(err, "publishing message")
 		}
 	}()
@@ -217,52 +217,56 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 	for i := 0; i < c.workers; i++ {
 		go func() {
 			defer wg.Done()
-			for {
-				select {
-				case msg := <-msgs:
-					a, delay := handler(&msg)
-					switch a {
-					case AckTypeAck:
-						time.Sleep(delay)
-						msg.Ack(false)
-					case AckTypeNack:
-						time.Sleep(delay)
-						msg.Nack(false, true)
-					case AckTypeReject:
-						time.Sleep(delay)
-						msg.Reject(false)
-					case AckTypeRequeue:
-						err := c.Publish(&amqp.Publishing{
-							Body:            msg.Body,
-							Headers:         msg.Headers,
-							ContentType:     msg.ContentType,
-							ContentEncoding: msg.ContentEncoding,
-							DeliveryMode:    msg.DeliveryMode,
-							Priority:        msg.Priority,
-							CorrelationId:   msg.CorrelationId,
-							ReplyTo:         msg.ReplyTo,
-							Expiration:      msg.Expiration,
-							MessageId:       msg.MessageId,
-							Timestamp:       msg.Timestamp,
-							Type:            msg.Type,
-							UserId:          msg.UserId,
-							AppId:           msg.AppId,
-						})
-						switch err {
-						case nil:
-							msg.Ack(false)
-						default:
-							msg.Nack(false, true)
-						}
-					}
-				case <-ctx.Done():
-					return
-				}
-			}
+			c.consumeLoop(ctx, msgs, handler)
 		}()
 	}
 	wg.Wait()
 	return ctx.Err()
+}
+
+func (c *Client) consumeLoop(ctx context.Context, msgs <-chan amqp.Delivery, handler HandlerFunc) {
+	for {
+		select {
+		case msg := <-msgs:
+			a, delay := handler(&msg)
+			switch a {
+			case AckTypeAck:
+				time.Sleep(delay)
+				msg.Ack(false)
+			case AckTypeNack:
+				time.Sleep(delay)
+				msg.Nack(false, true)
+			case AckTypeReject:
+				time.Sleep(delay)
+				msg.Reject(false)
+			case AckTypeRequeue:
+				err := c.Publish(&amqp.Publishing{
+					Body:            msg.Body,
+					Headers:         msg.Headers,
+					ContentType:     msg.ContentType,
+					ContentEncoding: msg.ContentEncoding,
+					DeliveryMode:    msg.DeliveryMode,
+					Priority:        msg.Priority,
+					CorrelationId:   msg.CorrelationId,
+					ReplyTo:         msg.ReplyTo,
+					Expiration:      msg.Expiration,
+					MessageId:       msg.MessageId,
+					Timestamp:       msg.Timestamp,
+					Type:            msg.Type,
+					UserId:          msg.UserId,
+					AppId:           msg.AppId,
+				})
+				switch err {
+				case nil:
+					msg.Ack(false)
+				default:
+					msg.Nack(false, true)
+				}
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // Close closes the channel and the connection.
@@ -334,29 +338,46 @@ func (c *Client) registerReconnect(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ch:
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.channel != nil {
+				c.channel.Close()
+				c.channel = nil
+			}
+			if c.conn != nil {
+				c.conn.Close()
+				c.conn = nil
+			}
+
 			dial := func() error {
+				// already reconnected
+				if c.conn != nil {
+					return nil
+				}
 				conn, err := amqp.Dial(c.url)
 				if err != nil {
 					return err
 				}
-				c.mu.Lock()
-				defer c.mu.Unlock()
 				c.conn = &rabbitWrapper{conn}
+				return nil
+			}
+			channel := func() error {
+				var err error
 				c.channel, err = c.conn.Channel()
 				return err
 			}
 			var err error
-			for i := 0; i < c.retryCount; i++ {
+			for {
+				time.Sleep(c.retryDelay)
 				err = dial()
 				if err == nil {
-					break
+					err = channel()
+					if err == nil {
+						break
+					}
 				}
-				time.Sleep(c.retryDelay)
 			}
-			if err != nil {
-				log.Fatal(err)
-			}
-			c.registerReconnect(ctx)
+			go c.registerReconnect(ctx)
 		}
 	}()
 }

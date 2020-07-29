@@ -106,7 +106,7 @@ func getContainer(t *testing.T) (container testcontainers.Container, addr string
 // restartRabbitMQ restarts the rabbitmq server inside the container.
 func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	_, err := container.Exec(ctx, []string{
 		"rabbitmqctl",
@@ -114,13 +114,13 @@ func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 	})
 	require.NoError(t, err)
 
-	_, err = container.Exec(ctx, []string{
-		"rabbitmqctl",
-		"start_app",
-	})
-	require.NoError(t, err)
-
-	c := container.(*testcontainers.DockerContainer)
-	err = c.WaitingFor.WaitUntilReady(ctx, c)
-	require.NoError(t, err)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		defer cancel()
+		_, err = container.Exec(ctx, []string{
+			"rabbitmqctl",
+			"start_app",
+		})
+		require.NoError(t, err)
+	}()
 }
