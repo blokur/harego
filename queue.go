@@ -112,7 +112,10 @@ func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "declaring queue")
 	}
-	c.pubCh = make(chan *publishMsg, c.pubChBuff)
+	if c.pubChBuff == 0 {
+		c.pubChBuff = 1
+	}
+	c.pubCh = make(chan *publishMsg, c.workers*c.pubChBuff)
 	for i := 0; i < c.workers; i++ {
 		err = c.publishWorker(ctx, i)
 		if err != nil {
@@ -212,59 +215,71 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if err != nil {
 		return errors.Wrap(err, "getting consume channel")
 	}
+	gotMsgs := make(chan amqp.Delivery, c.workers*c.pubChBuff)
+	go func() {
+		<-ctx.Done()
+		close(gotMsgs)
+	}()
+
+	go func() {
+		for msg := range msgs {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			gotMsgs <- msg
+		}
+	}()
 	var wg sync.WaitGroup
 	wg.Add(c.workers)
 	for i := 0; i < c.workers; i++ {
 		go func() {
 			defer wg.Done()
-			c.consumeLoop(ctx, msgs, handler)
+			c.consumeLoop(gotMsgs, handler)
 		}()
 	}
 	wg.Wait()
 	return ctx.Err()
 }
 
-func (c *Client) consumeLoop(ctx context.Context, msgs <-chan amqp.Delivery, handler HandlerFunc) {
-	for {
-		select {
-		case msg := <-msgs:
-			a, delay := handler(&msg)
-			switch a {
-			case AckTypeAck:
-				time.Sleep(delay)
+func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
+	for msg := range msgs {
+		msg := msg
+		a, delay := handler(&msg)
+		switch a {
+		case AckTypeAck:
+			time.Sleep(delay)
+			msg.Ack(false)
+		case AckTypeNack:
+			time.Sleep(delay)
+			msg.Nack(false, true)
+		case AckTypeReject:
+			time.Sleep(delay)
+			msg.Reject(false)
+		case AckTypeRequeue:
+			err := c.Publish(&amqp.Publishing{
+				Body:            msg.Body,
+				Headers:         msg.Headers,
+				ContentType:     msg.ContentType,
+				ContentEncoding: msg.ContentEncoding,
+				DeliveryMode:    msg.DeliveryMode,
+				Priority:        msg.Priority,
+				CorrelationId:   msg.CorrelationId,
+				ReplyTo:         msg.ReplyTo,
+				Expiration:      msg.Expiration,
+				MessageId:       msg.MessageId,
+				Timestamp:       msg.Timestamp,
+				Type:            msg.Type,
+				UserId:          msg.UserId,
+				AppId:           msg.AppId,
+			})
+			switch err {
+			case nil:
 				msg.Ack(false)
-			case AckTypeNack:
-				time.Sleep(delay)
+			default:
 				msg.Nack(false, true)
-			case AckTypeReject:
-				time.Sleep(delay)
-				msg.Reject(false)
-			case AckTypeRequeue:
-				err := c.Publish(&amqp.Publishing{
-					Body:            msg.Body,
-					Headers:         msg.Headers,
-					ContentType:     msg.ContentType,
-					ContentEncoding: msg.ContentEncoding,
-					DeliveryMode:    msg.DeliveryMode,
-					Priority:        msg.Priority,
-					CorrelationId:   msg.CorrelationId,
-					ReplyTo:         msg.ReplyTo,
-					Expiration:      msg.Expiration,
-					MessageId:       msg.MessageId,
-					Timestamp:       msg.Timestamp,
-					Type:            msg.Type,
-					UserId:          msg.UserId,
-					AppId:           msg.AppId,
-				})
-				switch err {
-				case nil:
-					msg.Ack(false)
-				default:
-					msg.Nack(false, true)
-				}
 			}
-		case <-ctx.Done():
-			return
 		}
 	}
 }

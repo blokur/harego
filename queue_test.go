@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -164,7 +165,7 @@ func testNewClientQueueBind(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", queue, true, true, mock.Anything,
+	ch.On("QueueDeclare", queue, false, true, mock.Anything,
 		true, mock.Anything).
 		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
@@ -178,7 +179,7 @@ func testNewClientQueueBind(t *testing.T) {
 		harego.PrefetchCount(prefetchCount),
 		harego.PrefetchSize(prefetchSize),
 		harego.QueueName(queue),
-		harego.Durable,
+		harego.NotDurable,
 		harego.AutoDelete,
 		harego.NoWait,
 	)
@@ -262,7 +263,6 @@ func testClientPublishPublishError(t *testing.T) {
 		harego.Connection(r),
 		harego.ExchangeName(exchName),
 		harego.WithExchangeType(exchType),
-		harego.Durable,
 		harego.AutoDelete,
 		harego.Internal,
 		harego.NoWait,
@@ -380,17 +380,17 @@ func testClientConsumeCancelledContext(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	delivery := make(chan amqp.Delivery)
-	go func() {
-		delivery <- amqp.Delivery{Body: []byte("first message")}
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	delivery := make(chan amqp.Delivery, 1)
+	delivery <- amqp.Delivery{Body: []byte("first message")}
 
 	ch.On("Consume", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return((<-chan amqp.Delivery)(delivery), nil).Once() //nolint:gocritic // otherwise the mock breaks.
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	var wg sync.WaitGroup
+	wg.Add(1)
 	err = cl.Consume(ctx, func(d *amqp.Delivery) (a harego.AckType, delay time.Duration) {
 		select {
 		case <-ctx.Done():
@@ -399,19 +399,16 @@ func testClientConsumeCancelledContext(t *testing.T) {
 		default:
 		}
 		cancel()
-		go func() {
-			delivery <- amqp.Delivery{Body: []byte("second message")}
-		}()
+		delivery <- amqp.Delivery{Body: []byte("second message")}
+		wg.Done()
 		return 0, 0
 	})
 	testament.AssertInError(t, err, context.Canceled)
 
 	assert.Eventually(t, func() bool {
-		// the message should not be read from the handler,  and when it is not read,
-		// it needs a release.
-		<-delivery
+		wg.Wait()
 		return true
-	}, 10*time.Second, time.Millisecond)
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func testClientClose(t *testing.T) {

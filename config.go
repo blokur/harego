@@ -101,9 +101,10 @@ func ConsumerName(name string) ConfigFunc {
 	}
 }
 
-// Durable marks the exchange and the queue to be durable.
-func Durable(c *Client) {
-	c.durable = true
+// NotDurable marks the exchange and the queue not to be durable. Default is
+// durable.
+func NotDurable(c *Client) {
+	c.durable = false
 }
 
 // AutoDelete marks the exchange and queues with autoDelete property which
