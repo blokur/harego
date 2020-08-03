@@ -4,7 +4,6 @@ help: ## Show help messages.
 
 rabbitmq_image=rabbitmq:3.8-management-alpine
 rabbitmq_container=harego_rabbit_1
-rabbitmq_data=harego_rabbit_data_1
 
 run="."
 dir="./..."

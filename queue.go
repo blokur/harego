@@ -258,6 +258,7 @@ func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 			time.Sleep(delay)
 			msg.Reject(false)
 		case AckTypeRequeue:
+			time.Sleep(delay)
 			err := c.Publish(&amqp.Publishing{
 				Body:            msg.Body,
 				Headers:         msg.Headers,

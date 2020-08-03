@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.1.6"></a>
+## [v0.1.6] - 2020-08-03
+
+### Sleep
+- Sleep before requeuing
+
+
 <a name="v0.1.5"></a>
 ## [v0.1.5] - 2020-07-30
 
@@ -58,7 +65,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.1.6...HEAD
+[v0.1.6]: https://github.com/blokur/harego/compare/v0.1.5...v0.1.6
 [v0.1.5]: https://github.com/blokur/harego/compare/v0.1.4...v0.1.5
 [v0.1.4]: https://github.com/blokur/harego/compare/v0.1.3...v0.1.4
 [v0.1.3]: https://github.com/blokur/harego/compare/v0.1.2...v0.1.3
