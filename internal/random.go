@@ -9,6 +9,7 @@ import (
 // stolen from "github.com/docker/docker/pkg/namesgenerator"
 
 func init() {
+	// nolint:gosec // it's not an operation critical seed.
 	rand.Seed(time.Now().UnixNano())
 }
 
@@ -368,5 +369,6 @@ var (
 // GetRandomName generates a random name from the list of adjectives and
 // surnames in this package formatted as "adjective_surname".
 func GetRandomName() string {
+	// nolint:gosec // it's not an operation critical seed.
 	return fmt.Sprintf("%s_%s", left[rand.Intn(len(left))], right[rand.Intn(len(right))])
 }

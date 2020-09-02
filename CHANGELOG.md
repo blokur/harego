@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.2.0"></a>
+## [v0.2.0] - 2020-09-02
+
+### Implement
+- Implement a better reconnect strategy
+
+
 <a name="v0.1.6"></a>
 ## [v0.1.6] - 2020-08-03
 
@@ -65,7 +72,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.2.0...HEAD
+[v0.2.0]: https://github.com/blokur/harego/compare/v0.1.6...v0.2.0
 [v0.1.6]: https://github.com/blokur/harego/compare/v0.1.5...v0.1.6
 [v0.1.5]: https://github.com/blokur/harego/compare/v0.1.4...v0.1.5
 [v0.1.4]: https://github.com/blokur/harego/compare/v0.1.3...v0.1.4

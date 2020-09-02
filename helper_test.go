@@ -3,7 +3,12 @@ package harego_test
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"math/rand"
+	"net/http"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +16,6 @@ import (
 	"github.com/blokur/harego"
 	"github.com/blokur/harego/internal"
 	"github.com/spf13/viper"
-	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -45,32 +49,80 @@ func randomBody(lines int) string {
 	return strings.Join(body, "\n")
 }
 
-func getClient(t *testing.T) *harego.Client {
+func getClient(t *testing.T, conf ...harego.ConfigFunc) *harego.Client {
 	t.Helper()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
-	return getNamedClient(t, exchange, queueName)
+	vh := "test." + randomString(20)
+	return getNamedClient(t, vh, exchange, queueName, conf...)
 }
 
-func getNamedClient(t *testing.T, exchange, queueName string) *harego.Client {
+func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) *harego.Client {
 	t.Helper()
-	url := fmt.Sprintf("amqp://%s:%s@%s/", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr)
-	e, err := harego.NewClient(url,
+	var (
+		adminURL string
+		err      error
+	)
+	apiAddress := strings.Split(internal.RabbitMQAddr, ":")[0]
+	adminPort := 15672
+	if v, ok := os.LookupEnv("RABBITMQ_ADMIN_PORT"); ok {
+		adminPort, err = strconv.Atoi(v)
+		if err != nil {
+			adminPort = 15672
+		}
+	}
+	if vh != "" {
+		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
+		req, err := http.NewRequest("PUT", adminURL, nil)
+		require.NoError(t, err)
+		req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
+		resp, err := http.DefaultClient.Do(req)
+		if resp != nil && resp.Body != nil {
+			defer func() {
+				io.Copy(ioutil.Discard, resp.Body)
+				resp.Body.Close()
+			}()
+		}
+		require.NoError(t, err)
+	}
+
+	url := fmt.Sprintf("amqp://%s:%s@%s/%s", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr, vh)
+	conf = append([]harego.ConfigFunc{
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
+	}, conf...)
+	e, err := harego.NewClient(url,
+		conf...,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		rabbit, err := amqp.Dial(url)
-		require.NoErrorf(t, err, "connecting to RabbitMQ: %s", url)
-		ch, err := rabbit.Channel()
-		require.NoError(t, err)
-		err = ch.ExchangeDelete(exchange, false, false)
-		assert.NoError(t, err)
-		_, err = ch.QueueDelete(queueName, false, false, true)
-		assert.NoError(t, err)
-		assert.NoError(t, rabbit.Close())
-		e.Close()
+		assert.Eventually(t, func() bool {
+			e.Close()
+			return true
+		}, 2*time.Second, 10*time.Millisecond)
+		urls := []string{
+			fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
+			fmt.Sprintf("http://%s:%d/api/exchanges/%s", apiAddress, adminPort, exchange),
+		}
+		if vh != "" {
+			urls = append(urls, adminURL)
+		}
+
+		for _, url := range urls {
+			func() {
+				req, err := http.NewRequest("DELETE", url, nil)
+				require.NoError(t, err)
+				req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
+				resp, err := http.DefaultClient.Do(req)
+				if resp != nil && resp.Body != nil {
+					defer func() {
+						io.Copy(ioutil.Discard, resp.Body)
+						resp.Body.Close()
+					}()
+				}
+				require.NoError(t, err)
+			}()
+		}
 	})
 	return e
 }
@@ -117,10 +169,9 @@ func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		_, err = container.Exec(ctx, []string{
+		container.Exec(ctx, []string{
 			"rabbitmqctl",
 			"start_app",
 		})
-		require.NoError(t, err)
 	}()
 }

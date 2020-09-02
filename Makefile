@@ -35,16 +35,17 @@ ci_tests: ## Run tests for CI.
 	go fmt ./...
 	go vet ./...
 	golangci-lint run ./...
-	go test -trimpath --timeout=10m -failfast -v -tags=integration -race -covermode=atomic -coverprofile=coverage.out ./...
+	go test -trimpath --timeout=10m -failfast -v -race -count=5 ./...
+	go test -trimpath --timeout=10m -failfast -v -tags=integration -covermode=atomic -coverprofile=coverage.out ./...
 
 
 .PHONY: integration_deps
 integration_deps: ## Install integration test databases. It removes every existing setup.
 	@-docker pull $(rabbitmq_image)
 	@-docker network create harego
-	@-docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_ERLANG_COOKIE='harego' -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image)
+	@docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image) rabbitmq-server --erlang-cookie=harego
 	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
-	@-docker exec -it $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
+	@docker exec -it $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
 
 
 .PHONY: reset_docker

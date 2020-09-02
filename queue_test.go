@@ -59,10 +59,6 @@ func testNewClientBadInput(t *testing.T) {
 			conn,
 			harego.WithExchangeType(9999999),
 		}},
-		{"prefetch count", []harego.ConfigFunc{
-			conn,
-			harego.PrefetchCount(0),
-		}},
 		{"prefetch size", []harego.ConfigFunc{
 			conn,
 			harego.PrefetchSize(-1),
@@ -414,6 +410,8 @@ func testClientConsumeCancelledContext(t *testing.T) {
 func testClientClose(t *testing.T) {
 	t.Run("AlreadyClosed", testClientCloseAlreadyClosed)
 	t.Run("Errors", testClientCloseErrors)
+	t.Run("MultipleTimes", testClientCloseMultipleTimes)
+	t.Run("PublishNotPanic", testClientClosePublishNotPanic)
 }
 
 func testClientCloseAlreadyClosed(t *testing.T) {
@@ -499,4 +497,49 @@ func testClientCloseErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testClientCloseMultipleTimes(t *testing.T) {
+	t.Parallel()
+	cl, err := harego.NewClient("",
+		harego.Connection(&mocks.RabbitMQSimple{}),
+	)
+	require.NoError(t, err)
+
+	err = cl.Close()
+	require.NoError(t, err)
+	for i := 0; i < 100; i++ {
+		err = cl.Close()
+		testament.AssertInError(t, err, harego.ErrClosed)
+	}
+}
+
+func testClientClosePublishNotPanic(t *testing.T) {
+	t.Parallel()
+	r := &mocks.RabbitMQSimple{}
+
+	total := 100
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
+		harego.Workers(total),
+	)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < total-1; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			assert.NotPanics(t, func() {
+				cl.Publish(&amqp.Publishing{})
+			})
+		}()
+	}
+
+	err = cl.Close()
+	assert.NoError(t, err)
+	assert.Eventually(t, func() bool {
+		wg.Wait()
+		return true
+	}, 120*time.Second, 10*time.Millisecond)
 }

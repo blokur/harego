@@ -79,7 +79,7 @@ const (
 	// DeliveryModeTransient means higher throughput but messages will not be
 	// restored on broker restart. The delivery mode of publishings is unrelated
 	// to the durability of the queues they reside on. Transient messages will not
-	// be restored to durable queues
+	// be restored to durable queues.
 	DeliveryModeTransient = DeliveryMode(amqp.Transient)
 
 	// DeliveryModePersistent messages will be restored to

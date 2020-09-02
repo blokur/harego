@@ -2,7 +2,6 @@ package harego
 
 import (
 	"context"
-	"strconv"
 	"sync"
 	"time"
 
@@ -50,6 +49,7 @@ type Client struct {
 	once      sync.Once
 	cancel    func()
 	closed    bool
+	started   bool
 }
 
 type publishMsg struct {
@@ -79,7 +79,14 @@ func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 		retryDelay:    100 * time.Millisecond,
 	}
 	for _, cnf := range conf {
-		cnf(c)
+		err := cnf(c)
+		if err != nil {
+			return nil, err
+		}
+	}
+	c.started = true
+	if c.prefetchCount < c.workers {
+		c.prefetchCount = c.workers
 	}
 	err := c.validate()
 	if err != nil {
@@ -116,35 +123,8 @@ func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 		c.pubChBuff = 1
 	}
 	c.pubCh = make(chan *publishMsg, c.workers*c.pubChBuff)
-	for i := 0; i < c.workers; i++ {
-		err = c.publishWorker(ctx, i)
-		if err != nil {
-			return nil, errors.Wrap(err, "starting workers")
-		}
-	}
-	c.registerReconnect(ctx)
-	return c, nil
-}
-
-// Publish sends the msg to the broker on one of the workers.
-func (c *Client) Publish(msg *amqp.Publishing) error {
-	if c.closed {
-		return ErrClosed
-	}
-	err := make(chan error)
-	c.pubCh <- &publishMsg{
-		msg:   msg,
-		errCh: err,
-	}
-	return <-err
-}
-
-func (c *Client) publishWorker(ctx context.Context, i int) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	exchName := c.exchName + "_" + strconv.Itoa(i)
-	err := c.channel.ExchangeDeclare(
-		exchName,
+	err = c.channel.ExchangeDeclare(
+		c.exchName,
 		c.exchType.String(),
 		c.durable,
 		c.autoDelete,
@@ -153,29 +133,62 @@ func (c *Client) publishWorker(ctx context.Context, i int) error {
 		nil,
 	)
 	if err != nil {
-		return errors.Wrap(err, "declaring exchange")
+		return nil, errors.Wrap(err, "declaring exchange")
 	}
 	err = c.channel.QueueBind(
 		c.queueName,
 		c.routingKey,
-		exchName,
+		c.exchName,
 		c.noWait,
 		nil,
 	)
 	if err != nil {
-		return errors.Wrap(err, "binding queue")
+		return nil, errors.Wrap(err, "binding queue")
 	}
+
+	for i := 0; i < c.workers; i++ {
+		c.publishWorker(ctx)
+	}
+	c.registerReconnect(ctx)
+	return c, nil
+}
+
+// Publish sends the msg to the broker on one of the workers.
+func (c *Client) Publish(msg *amqp.Publishing) error {
+	c.mu.RLock()
+	if c.closed {
+		c.mu.RUnlock()
+		return ErrClosed
+	}
+	c.mu.RUnlock()
+	err := make(chan error)
+	c.pubCh <- &publishMsg{
+		msg:   msg,
+		errCh: err,
+	}
+	return <-err
+}
+
+func (c *Client) publishWorker(ctx context.Context) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	go func() {
 		for msg := range c.pubCh {
 			select {
 			case <-ctx.Done():
+				msg.errCh <- ctx.Err()
 				return
 			default:
 			}
 			msg.msg.DeliveryMode = uint8(c.deliveryMode)
 			c.mu.RLock()
-			err = c.channel.Publish(
-				exchName,
+			if c.channel == nil {
+				c.mu.RUnlock()
+				msg.errCh <- ErrClosed
+				break
+			}
+			err := c.channel.Publish(
+				c.exchName,
 				c.routingKey,
 				false,
 				false,
@@ -185,7 +198,6 @@ func (c *Client) publishWorker(ctx context.Context, i int) error {
 			msg.errCh <- errors.Wrap(err, "publishing message")
 		}
 	}()
-	return nil
 }
 
 // Consume is a bloking call that passes each message to the handler and stops
@@ -287,14 +299,18 @@ func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 
 // Close closes the channel and the connection.
 func (c *Client) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
 	if c.closed {
+		c.mu.RUnlock()
 		return ErrClosed
 	}
+	c.mu.RUnlock()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.once.Do(func() {
-		c.cancel()
 		c.closed = true
+		c.cancel()
 	})
 	var err *multierror.Error
 	if c.channel != nil {
@@ -347,13 +363,20 @@ func (c *Client) validate() error {
 
 func (c *Client) registerReconnect(ctx context.Context) {
 	c.mu.RLock()
-	defer c.mu.RUnlock()
+	if c.closed {
+		c.mu.RUnlock()
+		return
+	}
+	c.mu.RUnlock()
 	ch := c.channel.NotifyClose(make(chan *amqp.Error))
 	go func() {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ch:
+			if c.closed {
+				return
+			}
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			if c.channel != nil {
@@ -365,18 +388,6 @@ func (c *Client) registerReconnect(ctx context.Context) {
 				c.conn = nil
 			}
 
-			dial := func() error {
-				// already reconnected
-				if c.conn != nil {
-					return nil
-				}
-				conn, err := amqp.Dial(c.url)
-				if err != nil {
-					return err
-				}
-				c.conn = &rabbitWrapper{conn}
-				return nil
-			}
 			channel := func() error {
 				var err error
 				c.channel, err = c.conn.Channel()
@@ -385,7 +396,10 @@ func (c *Client) registerReconnect(ctx context.Context) {
 			var err error
 			for {
 				time.Sleep(c.retryDelay)
-				err = dial()
+				if c.closed {
+					return
+				}
+				err = c.dial()
 				if err == nil {
 					err = channel()
 					if err == nil {
@@ -396,4 +410,17 @@ func (c *Client) registerReconnect(ctx context.Context) {
 			go c.registerReconnect(ctx)
 		}
 	}()
+}
+
+func (c *Client) dial() error {
+	// already reconnected
+	if c.conn != nil {
+		return nil
+	}
+	conn, err := amqp.Dial(c.url)
+	if err != nil {
+		return err
+	}
+	c.conn = &rabbitWrapper{conn}
+	return nil
 }

@@ -6,11 +6,13 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/blokur/harego"
 	"github.com/blokur/testament"
+	"github.com/pkg/errors"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,6 +25,7 @@ func TestIntegClient(t *testing.T) {
 	t.Run("UseSameQueue", testIntegClientUseSameQueue)
 	t.Run("PublishWorkers", testIntegClientPublishWorkers)
 	t.Run("Reconnect", testIntegClientReconnect)
+	t.Run("Close", testIntegClientClose)
 }
 
 func testIntegClientPublish(t *testing.T) {
@@ -51,8 +54,7 @@ func testIntegClientPublish(t *testing.T) {
 
 func testIntegClientPublishConcurrent(t *testing.T, total, workers int) {
 	t.Parallel()
-	c := getClient(t)
-	harego.Workers(workers)(c)
+	c := getClient(t, harego.Workers(workers))
 	var wg sync.WaitGroup
 	wg.Add(total)
 	for i := 0; i < total; i++ {
@@ -101,13 +103,16 @@ func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 	t.Parallel()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
+	vh := "test." + randomString(20)
 
-	pub := getNamedClient(t, exchange, queueName)
+	pub := getNamedClient(t, vh, exchange, queueName,
+		harego.Workers(workers),
+	)
 	defer pub.Close()
-	harego.Workers(workers)(pub)
-	cons := getNamedClient(t, exchange, queueName)
+	cons := getNamedClient(t, vh, exchange, queueName,
+		harego.Workers(workers),
+	)
 	defer cons.Close()
-	harego.Workers(workers)(cons)
 
 	var (
 		muWant sync.RWMutex
@@ -167,16 +172,20 @@ func testIntegClientConsumeNack(t *testing.T) {
 	t.Parallel()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
+	vh := "test." + randomString(20)
 
-	pub := getNamedClient(t, exchange, queueName)
-	cons1 := getNamedClient(t, exchange, queueName)
+	pub := getNamedClient(t, vh, exchange, queueName)
+	defer pub.Close()
+	cons1 := getNamedClient(t, vh, exchange, queueName,
+		harego.ConsumerName("cons1"),
+		harego.Workers(2),
+	)
 	defer cons1.Close()
-	harego.ConsumerName("cons1")(cons1)
-	harego.Workers(2)(cons1)
-	cons2 := getNamedClient(t, exchange, queueName)
+	cons2 := getNamedClient(t, vh, exchange, queueName,
+		harego.ConsumerName("cons2"),
+		harego.Workers(2),
+	)
 	defer cons2.Close()
-	harego.ConsumerName("cons2")(cons2)
-	harego.Workers(2)(cons2)
 
 	original := randomBody(1)
 	err := pub.Publish(&amqp.Publishing{
@@ -225,10 +234,11 @@ func testIntegClientConsumeReject(t *testing.T) {
 	t.Parallel()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
+	vh := "test." + randomString(20)
 
-	pub := getNamedClient(t, exchange, queueName)
+	pub := getNamedClient(t, vh, exchange, queueName)
 	defer pub.Close()
-	cons1 := getNamedClient(t, exchange, queueName)
+	cons1 := getNamedClient(t, vh, exchange, queueName)
 	defer cons1.Close()
 
 	original := randomBody(1)
@@ -252,7 +262,7 @@ func testIntegClientConsumeReject(t *testing.T) {
 	duration := time.Since(started)
 	cons1.Close()
 
-	cons2 := getNamedClient(t, exchange, queueName)
+	cons2 := getNamedClient(t, vh, exchange, queueName)
 	defer cons2.Close()
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), duration+2*time.Second)
@@ -269,9 +279,10 @@ func testIntegClientConsumeRequeue(t *testing.T) {
 	t.Parallel()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
-	pub := getNamedClient(t, exchange, queueName)
+	vh := "test." + randomString(20)
+	pub := getNamedClient(t, vh, exchange, queueName)
 	defer pub.Close()
-	cons := getNamedClient(t, exchange, queueName)
+	cons := getNamedClient(t, vh, exchange, queueName)
 	defer cons.Close()
 
 	message := func(i int) string { return fmt.Sprintf("message #%d", i) }
@@ -317,18 +328,19 @@ func testIntegClientConsumeRequeue(t *testing.T) {
 
 func testIntegClientSeparatedConsumePublish(t *testing.T) {
 	t.Parallel()
+	vh := "test." + randomString(20)
 	exchange1 := "test." + randomString(20)
 	exchange2 := "test." + randomString(20)
 	queueName1 := "test." + randomString(20)
 	queueName2 := "test." + randomString(20)
 
-	pub1 := getNamedClient(t, exchange1, queueName1)
+	pub1 := getNamedClient(t, vh, exchange1, queueName1)
 	defer pub1.Close()
-	pub2 := getNamedClient(t, exchange2, queueName2)
+	pub2 := getNamedClient(t, vh, exchange2, queueName2)
 	defer pub2.Close()
-	cons1 := getNamedClient(t, exchange1, queueName1)
+	cons1 := getNamedClient(t, vh, exchange1, queueName1)
 	defer cons1.Close()
-	cons2 := getNamedClient(t, exchange2, queueName2)
+	cons2 := getNamedClient(t, vh, exchange2, queueName2)
 	defer cons2.Close()
 
 	var want1, want2 []string
@@ -396,15 +408,16 @@ func testIntegClientSeparatedConsumePublish(t *testing.T) {
 
 func testIntegClientUseSameQueue(t *testing.T) {
 	t.Parallel()
+	vh := "test." + randomString(20)
 	exchange1 := "test." + randomString(20)
 	exchange2 := "test." + randomString(20)
 	queueName := "test." + randomString(20)
 
-	pub1 := getNamedClient(t, exchange1, queueName)
+	pub1 := getNamedClient(t, vh, exchange1, queueName)
 	defer pub1.Close()
-	pub2 := getNamedClient(t, exchange2, queueName)
+	pub2 := getNamedClient(t, vh, exchange2, queueName)
 	defer pub2.Close()
-	cons := getNamedClient(t, exchange2, queueName)
+	cons := getNamedClient(t, vh, exchange2, queueName)
 	defer cons.Close()
 
 	var (
@@ -456,14 +469,16 @@ func testIntegClientUseSameQueue(t *testing.T) {
 
 func testIntegClientPublishWorkers(t *testing.T) {
 	t.Parallel()
+	vh := "test." + randomString(20)
 	exchange1 := "test." + randomString(20)
 	exchange2 := "test." + randomString(20)
 	queueName := "test." + randomString(20)
 
-	pub := getNamedClient(t, exchange1, queueName)
+	pub := getNamedClient(t, vh, exchange1, queueName,
+		harego.Workers(10),
+	)
 	defer pub.Close()
-	harego.Workers(10)(pub)
-	cons := getNamedClient(t, exchange2, queueName)
+	cons := getNamedClient(t, vh, exchange2, queueName)
 	defer cons.Close()
 
 	var (
@@ -511,6 +526,8 @@ func testIntegClientReconnect(t *testing.T) {
 		t.Skip("slow test")
 	}
 	t.Run("Publish", testIntegClientReconnectPublish)
+	t.Run("Publish/NotPanics", testIntegClientReconnectPublishNotPanics)
+	t.Run("Consume", testIntegClientReconnectConsume)
 }
 
 func testIntegClientReconnectPublish(t *testing.T) {
@@ -529,8 +546,10 @@ func testIntegClientReconnectPublish(t *testing.T) {
 	cons, err := harego.NewClient(addr,
 		harego.ExchangeName(exchange2),
 		harego.QueueName(queueName),
+		harego.Workers(10),
 	)
 	require.NoError(t, err)
+	defer cons.Close()
 
 	var (
 		want  []string
@@ -571,4 +590,191 @@ func testIntegClientReconnectPublish(t *testing.T) {
 	}, time.Minute, 10*time.Millisecond)
 
 	assert.ElementsMatch(t, want, got)
+}
+
+func testIntegClientReconnectPublishNotPanics(t *testing.T) {
+	t.Parallel()
+	var (
+		total     = 10000
+		wg        sync.WaitGroup
+		exchange1 = "test." + randomString(20)
+		exchange2 = "test." + randomString(20)
+		queueName = "test." + randomString(20)
+	)
+
+	container, addr := getContainer(t)
+	pub, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange1),
+		harego.QueueName(queueName),
+		harego.Workers(20),
+	)
+	require.NoError(t, err)
+
+	cons, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange2),
+		harego.QueueName(queueName),
+		harego.Workers(20),
+	)
+	require.NoError(t, err)
+	defer cons.Close()
+
+	wg.Add(total)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			restartRabbitMQ(t, container)
+		}
+	}()
+	for i := 0; i < total; i++ {
+		go func() {
+			defer wg.Done()
+			require.NotPanics(t, func() {
+				err := pub.Publish(&amqp.Publishing{
+					Body: []byte(randomString(10)),
+				})
+				require.NoError(t, err)
+			})
+		}()
+	}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var got int32
+		require.NotPanics(t, func() {
+			err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+				g := atomic.AddInt32(&got, 1)
+				if g >= int32(total) {
+					cancel()
+				}
+				return harego.AckTypeAck, 0
+			})
+			testament.AssertInError(t, err, context.Canceled)
+		})
+	}()
+
+	assert.Eventually(t, func() bool {
+		wg.Wait()
+		return true
+	}, time.Minute, 50*time.Millisecond)
+}
+
+func testIntegClientClose(t *testing.T) {
+	t.Parallel()
+	vh := "test." + randomString(20)
+	exchange := "test." + randomString(20)
+	queueName := "test." + randomString(20)
+
+	total := 10
+	broker := getNamedClient(t, vh, exchange, queueName, harego.Workers(total))
+	defer broker.Close()
+
+	var wg sync.WaitGroup
+	for i := 0; i < total-1; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			err := broker.Publish(&amqp.Publishing{
+				Body: []byte(randomString(20)),
+			})
+			if err == nil {
+				return
+			}
+			assert.Equal(t, harego.ErrClosed, errors.Cause(err))
+		}()
+	}
+
+	wg.Add(total / 2)
+	for i := 0; i < total/2; i++ {
+		go func() {
+			defer wg.Done()
+			err := broker.Close()
+			if err == nil {
+				return
+			}
+			assert.Equal(t, harego.ErrClosed, errors.Cause(err))
+		}()
+	}
+
+	assert.Eventually(t, func() bool {
+		wg.Wait()
+		return true
+	}, 60*time.Second, 10*time.Millisecond)
+}
+
+func testIntegClientReconnectConsume(t *testing.T) {
+	t.Parallel()
+	var (
+		total     = 10000
+		wg        sync.WaitGroup
+		exchange1 = "test." + randomString(20)
+		exchange2 = "test." + randomString(20)
+		queueName = "test." + randomString(20)
+	)
+
+	container, addr := getContainer(t)
+	pub, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange1),
+		harego.QueueName(queueName),
+		harego.Workers(20),
+	)
+	require.NoError(t, err)
+
+	cons, err := harego.NewClient(addr,
+		harego.ExchangeName(exchange2),
+		harego.QueueName(queueName),
+		harego.Workers(20),
+	)
+	require.NoError(t, err)
+	defer cons.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for i := 0; i < total; i++ {
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(randomString(10)),
+		})
+		require.NoError(t, err)
+	}
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			restartRabbitMQ(t, container)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var got int32
+		require.NotPanics(t, func() {
+			err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+				g := atomic.AddInt32(&got, 1)
+				if g >= int32(total) {
+					cancel()
+				}
+				return harego.AckTypeAck, 0
+			})
+			testament.AssertInError(t, err, context.Canceled)
+		})
+	}()
+
+	assert.Eventually(t, func() bool {
+		wg.Wait()
+		return true
+	}, time.Minute, 50*time.Millisecond)
 }
