@@ -14,7 +14,7 @@ var (
 	// ErrClosed is returned when the Client is closed and is being reused.
 	ErrClosed = errors.New("exchange is already closed")
 
-	// ErrAlreadyStarted is returned when an already started client is about to
-	// be configured.
-	ErrAlreadyStarted = errors.New("client is already started")
+	// ErrAlreadyConfigured is returned when an already configured client is
+	// about to receive new configuration.
+	ErrAlreadyConfigured = errors.New("client is already configured")
 )

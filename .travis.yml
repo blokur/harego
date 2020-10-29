@@ -1,6 +1,6 @@
 language: go
 
-dist: bionic
+dist: focal
 
 os:
   - linux
@@ -14,13 +14,14 @@ env:
 
 before_install:
   - git config --global url."git@github.com:".insteadOf "https://github.com/"
-  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.29.0
+  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.31.0
 
 before_script:
   - make integration_deps
 
 go:
   - 1.14.x
+  - 1.15.x
 
 script:
   - make ci_tests

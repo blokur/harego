@@ -1,6 +1,7 @@
 package harego
 
 import (
+	"context"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -32,3 +33,12 @@ type Channel interface {
 // requeue the message, they may mutate the message if required. Mutate the msg
 // at your own peril.
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
+
+// Client is a concurrent safe construct for publishing a message to an
+// exchange. It creates multiple workers for safe communication. Zero value is
+// not usable.
+type Client interface {
+	Publish(msg *amqp.Publishing) error
+	Consume(ctx context.Context, handler HandlerFunc) error
+	Close() error
+}

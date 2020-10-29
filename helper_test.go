@@ -49,7 +49,7 @@ func randomBody(lines int) string {
 	return strings.Join(body, "\n")
 }
 
-func getClient(t *testing.T, conf ...harego.ConfigFunc) *harego.Client {
+func getClient(t *testing.T, conf ...harego.ConfigFunc) harego.Client {
 	t.Helper()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
@@ -57,7 +57,7 @@ func getClient(t *testing.T, conf ...harego.ConfigFunc) *harego.Client {
 	return getNamedClient(t, vh, exchange, queueName, conf...)
 }
 
-func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) *harego.Client {
+func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) harego.Client {
 	t.Helper()
 	var (
 		adminURL string

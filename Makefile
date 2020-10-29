@@ -60,7 +60,7 @@ dependencies: ## Install dependencies requried for development operations.
 	@go get -u github.com/git-chglog/git-chglog/cmd/git-chglog
 	@go get github.com/stretchr/testify/mock
 	@go get github.com/vektra/mockery/.../
-	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.29.0
+	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.31.0
 	@go get -u golang.org/x/tools/cmd/stringer
 	@go mod tidy
 

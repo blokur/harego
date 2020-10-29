@@ -15,7 +15,7 @@ import (
 // exchange. It creates multiple workers for safe communication. Zero value is
 // not usable.
 //nolint:maligned // most likely not an issue, but cleaner this way.
-type Client struct {
+type client struct {
 	url          string
 	workers      int
 	consumerName string
@@ -61,9 +61,9 @@ type publishMsg struct {
 // provide a valid url for reconnection. If you pass a Connection config
 // function, it will initiate it for the first time, not when reconnecting; make
 // sure you also provide a valid url as well.
-func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
+func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &Client{
+	c := &client{
 		url:           url,
 		exchName:      "default",
 		queueName:     "harego",
@@ -154,7 +154,7 @@ func NewClient(url string, conf ...ConfigFunc) (*Client, error) {
 }
 
 // Publish sends the msg to the broker on one of the workers.
-func (c *Client) Publish(msg *amqp.Publishing) error {
+func (c *client) Publish(msg *amqp.Publishing) error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -169,7 +169,7 @@ func (c *Client) Publish(msg *amqp.Publishing) error {
 	return <-err
 }
 
-func (c *Client) publishWorker(ctx context.Context) {
+func (c *client) publishWorker(ctx context.Context) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	go func() {
@@ -205,7 +205,7 @@ func (c *Client) publishWorker(ctx context.Context) {
 // message is returned back to the queue. If the context is cancelled, the
 // Client remains operational but no messages will be deliverd to this
 // handler.
-func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
+func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if c.closed {
 		return ErrClosed
 	}
@@ -255,7 +255,7 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 	return ctx.Err()
 }
 
-func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
+func (c *client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 	for msg := range msgs {
 		msg := msg
 		a, delay := handler(&msg)
@@ -298,7 +298,7 @@ func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 }
 
 // Close closes the channel and the connection.
-func (c *Client) Close() error {
+func (c *client) Close() error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -330,7 +330,7 @@ func (c *Client) Close() error {
 	return err.ErrorOrNil()
 }
 
-func (c *Client) validate() error {
+func (c *client) validate() error {
 	if c.conn == nil && c.url == "" {
 		return errors.Wrap(ErrInput, "empty RabbitMQ connection")
 	}
@@ -361,7 +361,7 @@ func (c *Client) validate() error {
 	return nil
 }
 
-func (c *Client) registerReconnect(ctx context.Context) {
+func (c *client) registerReconnect(ctx context.Context) {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -412,7 +412,7 @@ func (c *Client) registerReconnect(ctx context.Context) {
 	}()
 }
 
-func (c *Client) dial() error {
+func (c *client) dial() error {
 	// already reconnected
 	if c.conn != nil {
 		return nil

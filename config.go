@@ -16,13 +16,13 @@ func (r *rabbitWrapper) Channel() (Channel, error) {
 
 // ConfigFunc is a function for setting up the Client. A config function returns
 // an error if the client is already started.
-type ConfigFunc func(*Client) error
+type ConfigFunc func(*client) error
 
 // Connection sets the RabbitMQ connection.
 func Connection(r RabbitMQ) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.conn = r
 		return nil
@@ -31,9 +31,9 @@ func Connection(r RabbitMQ) ConfigFunc {
 
 // AMQP uses the connection for the broker.
 func AMQP(r *amqp.Connection) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.conn = &rabbitWrapper{r}
 		return nil
@@ -42,9 +42,9 @@ func AMQP(r *amqp.Connection) ConfigFunc {
 
 // QueueName sets the queue name.
 func QueueName(name string) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.queueName = name
 		return nil
@@ -53,9 +53,9 @@ func QueueName(name string) ConfigFunc {
 
 // RoutingKey sets the routing key of the queue.
 func RoutingKey(key string) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.routingKey = key
 		return nil
@@ -64,9 +64,9 @@ func RoutingKey(key string) ConfigFunc {
 
 // Workers sets the worker count for cusuming messages.
 func Workers(n int) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.workers = n
 		return nil
@@ -75,9 +75,9 @@ func Workers(n int) ConfigFunc {
 
 // WithDeliveryMode sets the default delivery mode of messages.
 func WithDeliveryMode(mode DeliveryMode) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.deliveryMode = mode
 		return nil
@@ -90,9 +90,9 @@ func WithDeliveryMode(mode DeliveryMode) ConfigFunc {
 // this option when consumers are started with noAck because no acknowledgments
 // are expected or sent.
 func PrefetchCount(i int) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.prefetchCount = i
 		return nil
@@ -103,9 +103,9 @@ func PrefetchCount(i int) ConfigFunc {
 // the server will try to keep at least that many bytes of deliveries flushed to
 // the network before receiving acknowledgments from the consumers.
 func PrefetchSize(i int) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.prefetchSize = i
 		return nil
@@ -114,9 +114,9 @@ func PrefetchSize(i int) ConfigFunc {
 
 // WithExchangeType sets the exchange type. The default is ExchangeTypeTopic.
 func WithExchangeType(t ExchangeType) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.exchType = t
 		return nil
@@ -126,9 +126,9 @@ func WithExchangeType(t ExchangeType) ConfigFunc {
 // ExchangeName sets the exchange name. For each worker, and additional string
 // will be appended for the worker number.
 func ExchangeName(name string) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.exchName = name
 		return nil
@@ -137,9 +137,9 @@ func ExchangeName(name string) ConfigFunc {
 
 // ConsumerName sets the consumer name of the consuming queue.
 func ConsumerName(name string) ConfigFunc {
-	return func(c *Client) error {
+	return func(c *client) error {
 		if c.started {
-			return ErrAlreadyStarted
+			return ErrAlreadyConfigured
 		}
 		c.consumerName = name
 		return nil
@@ -148,9 +148,9 @@ func ConsumerName(name string) ConfigFunc {
 
 // NotDurable marks the exchange and the queue not to be durable. Default is
 // durable.
-func NotDurable(c *Client) error {
+func NotDurable(c *client) error {
 	if c.started {
-		return ErrAlreadyStarted
+		return ErrAlreadyConfigured
 	}
 	c.durable = false
 	return nil
@@ -159,18 +159,18 @@ func NotDurable(c *Client) error {
 // AutoDelete marks the exchange and queues with autoDelete property which
 // causes the messages to be automatically removed from the queue when
 // consumed.
-func AutoDelete(c *Client) error {
+func AutoDelete(c *client) error {
 	if c.started {
-		return ErrAlreadyStarted
+		return ErrAlreadyConfigured
 	}
 	c.autoDelete = true
 	return nil
 }
 
 // Internal sets the exchange to be internal.
-func Internal(c *Client) error {
+func Internal(c *client) error {
 	if c.started {
-		return ErrAlreadyStarted
+		return ErrAlreadyConfigured
 	}
 	c.internal = true
 	return nil
@@ -179,9 +179,9 @@ func Internal(c *Client) error {
 // NoWait marks the exchange as noWait. When noWait is true, declare
 // without waiting for a confirmation from the server. The channel may be closed
 // as a result of an error.
-func NoWait(c *Client) error {
+func NoWait(c *client) error {
 	if c.started {
-		return ErrAlreadyStarted
+		return ErrAlreadyConfigured
 	}
 	c.noWait = true
 	return nil

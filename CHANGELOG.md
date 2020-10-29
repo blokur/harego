@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.2.1"></a>
+## [v0.2.1] - 2020-10-29
+
+### Code Refactoring
+- Refactor the NewClient to return an interface
+
+
 <a name="v0.2.0"></a>
 ## [v0.2.0] - 2020-09-02
 
@@ -72,7 +79,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.2.1...HEAD
+[v0.2.1]: https://github.com/blokur/harego/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/blokur/harego/compare/v0.1.6...v0.2.0
 [v0.1.6]: https://github.com/blokur/harego/compare/v0.1.5...v0.1.6
 [v0.1.5]: https://github.com/blokur/harego/compare/v0.1.4...v0.1.5
