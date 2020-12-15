@@ -14,25 +14,25 @@ High-level library on top of [amqp][amqp].
    - [Make Examples](#make-examples)
    - [Changelog](#changelog)
    - [Mocks](#mocks)
-3. [Database](#database)
-4. [References](#references)
+   - [RabbitMQ](#rabbitmq)
+3. [References](#references)
 
 
 ## Description
 
-An Client is a concurrent safe exchange and a queue for managing all
-communications with RabbitMQ. The only requirement for an Client to operate is
-an [amqp](github.com/streadway/amqp) connection. The Client will create workers
-for consuming messages. The default values are chosen to make the Client a
-durable queue working with the `default` exchange and `topic` kind. Client can
-be configure by passing provided `ConfigFunc` functions to NewClient()
-constructor.
+A harego.Client is a concurrent safe queue manager for RabbitMQ, and a
+high-level implementation on top of [amqp](github.com/streadway/amqp) library.
+The only requirement for an Client to operate is the address to the broker. The
+Client creates one or more workers for publishing/consuming messages. The
+default values are chosen to make the Client a durable queue working with the
+`default` exchange and `topic` kind. Client can be configure by passing
+provided `ConfigFunc` functions to NewClient() constructor.
 
 The `Consume()` method will call the provided `HandlerFunc` with the next
-message and waits until it returns before it passes the next one. The return
-value of the `HandlerFunc` decided what would happen to the message. The
-`Consume` worker will delay before act on the `ack` for the amount of time the
-`HandlerFunc` returns as the second value.
+available message on the next available worker. The return value of the
+`HandlerFunc` decided what would happen to the message. The `Consume` worker
+will delay before act on the `ack` for the amount of time the `HandlerFunc`
+returns as the second value.
 
 You can increase the worker sizes by passing `Workers(n)` to the `NewClient`
 constructor.
@@ -115,10 +115,10 @@ To generate mocks run:
 make mocks
 ```
 
-## Database
+## RabbitMQ
 
 For convenience you can trigger the `integration_deps` target to setup required
-databases:
+RabbitMQ instance:
 
 ```bash
 make integration_deps

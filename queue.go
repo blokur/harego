@@ -287,17 +287,16 @@ func (c *client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 				UserId:          msg.UserId,
 				AppId:           msg.AppId,
 			})
-			switch err {
-			case nil:
-				msg.Ack(false)
-			default:
+			if err != nil {
 				msg.Nack(false, true)
+				continue
 			}
+			msg.Ack(false)
 		}
 	}
 }
 
-// Close closes the channel and the connection.
+// Close closes the channel and the connection. A closed client if not usable.
 func (c *client) Close() error {
 	c.mu.RLock()
 	if c.closed {
@@ -391,7 +390,7 @@ func (c *client) registerReconnect(ctx context.Context) {
 			channel := func() error {
 				var err error
 				c.channel, err = c.conn.Channel()
-				return err
+				return errors.Wrap(err, "opening a new channel")
 			}
 			var err error
 			for {
@@ -419,7 +418,7 @@ func (c *client) dial() error {
 	}
 	conn, err := amqp.Dial(c.url)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "creating a connection to %q", c.url)
 	}
 	c.conn = &rabbitWrapper{conn}
 	return nil

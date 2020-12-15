@@ -23,6 +23,7 @@ unittest: ## Run unit tests in watch mode. You can set: [run, timeout, short, di
 
 
 .PHONY: integration_test
+integration_test: start_test_container
 integration_test: ## Run integration in watch mode. You can set: [run, timeout, short, dir, flags]. Example: make integration_test flags="-race".
 	@-docker start $(rabbitmq_container)
 	@echo "running tests on $(run). waiting for changes..."
@@ -47,6 +48,18 @@ integration_deps: ## Install integration test databases. It removes every existi
 	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
 	@docker exec -it $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
 
+.PHONY: start_test_container
+start_test_container: ## Start test containers.
+	@echo "Starting test containers"
+	@-docker start $(rabbitmq_container)
+	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid > /dev/null
+	@echo "All test containers are ready"
+
+
+.PHONY: stop_test_container
+stop_test_container: ## Stop test containers.
+	@-docker stop $(rabbitmq_container)
+
 
 .PHONY: reset_docker
 reset_docker: ## Reset containers and delete their data.
@@ -60,7 +73,7 @@ dependencies: ## Install dependencies requried for development operations.
 	@go get -u github.com/git-chglog/git-chglog/cmd/git-chglog
 	@go get github.com/stretchr/testify/mock
 	@go get github.com/vektra/mockery/.../
-	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.31.0
+	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.32.0
 	@go get -u golang.org/x/tools/cmd/stringer
 	@go mod tidy
 

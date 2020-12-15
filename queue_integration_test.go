@@ -19,6 +19,7 @@ import (
 )
 
 func TestIntegClient(t *testing.T) {
+	t.Parallel()
 	t.Run("Publish", testIntegClientPublish)
 	t.Run("Consume", testIntegClientConsume)
 	t.Run("SeparatedConsumePublish", testIntegClientSeparatedConsumePublish)

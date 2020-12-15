@@ -19,6 +19,7 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
+	t.Parallel()
 	t.Run("BadInput", testNewClientBadInput)
 	t.Run("Channel", testNewClientChannel)
 	t.Run("Qos", testNewClientQos)
@@ -275,6 +276,7 @@ func testClientConsume(t *testing.T) {
 	t.Run("ChannelError", testClientConsumeChannelError)
 	t.Run("NilHandler", testClientConsumeNilHandler)
 	t.Run("CancelledContext", testClientConsumeCancelledContext)
+	t.Run("AlreadyClosed", testClientConsumeAlreadyClosed)
 }
 
 func testClientConsumeChannelError(t *testing.T) {
@@ -405,6 +407,45 @@ func testClientConsumeCancelledContext(t *testing.T) {
 		wg.Wait()
 		return true
 	}, 10*time.Second, 10*time.Millisecond)
+}
+
+func testClientConsumeAlreadyClosed(t *testing.T) {
+	t.Parallel()
+	r := &mocks.RabbitMQ{}
+	defer r.AssertExpectations(t)
+	ch := &mocks.Channel{}
+	defer ch.AssertExpectations(t)
+	r.On("Channel").Return(ch, nil).Once()
+	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
+
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
+	)
+	require.NoError(t, err)
+
+	ch.On("Close").Return(nil)
+	r.On("Close").Return(nil)
+	err = cl.Close()
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err = cl.Consume(ctx, func(d *amqp.Delivery) (a harego.AckType, delay time.Duration) {
+		t.Errorf("didn't expect to receive a call for: %q", d.Body)
+		return 0, 0
+	})
+	testament.AssertInError(t, err, harego.ErrClosed)
 }
 
 func testClientClose(t *testing.T) {

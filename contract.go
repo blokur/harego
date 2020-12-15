@@ -38,7 +38,16 @@ type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 // exchange. It creates multiple workers for safe communication. Zero value is
 // not usable.
 type Client interface {
+	// Publish sends the msg to the broker on one of the workers.
 	Publish(msg *amqp.Publishing) error
+
+	// Consume is a bloking call that passes each message to the handler and
+	// stops handling messages when the context is done. If the handler returns
+	// false, the message is returned back to the queue. If the context is
+	// cancelled, the Client remains operational but no messages will be
+	// deliverd to this handler.
 	Consume(ctx context.Context, handler HandlerFunc) error
+
+	// Close closes the channel and the connection. A closed client is not usable.
 	Close() error
 }
