@@ -4,7 +4,7 @@ go 1.14
 
 require (
 	github.com/Microsoft/go-winio v0.4.14 // indirect
-	github.com/blokur/testament v0.0.1
+	github.com/blokur/testament v0.0.2
 	github.com/containerd/continuity v0.0.0-20190827140505-75bee3e2ccb6 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/google/go-cmp v0.5.2 // indirect

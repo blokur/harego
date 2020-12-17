@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.2.3"></a>
+## [v0.2.3] - 2020-12-17
+
+### Update
+- Update testament library version
+
+
 <a name="v0.2.2"></a>
 ## [v0.2.2] - 2020-12-15
 
@@ -86,7 +93,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.2.3...HEAD
+[v0.2.3]: https://github.com/blokur/harego/compare/v0.2.2...v0.2.3
 [v0.2.2]: https://github.com/blokur/harego/compare/v0.2.1...v0.2.2
 [v0.2.1]: https://github.com/blokur/harego/compare/v0.2.0...v0.2.1
 [v0.2.0]: https://github.com/blokur/harego/compare/v0.1.6...v0.2.0
