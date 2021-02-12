@@ -23,8 +23,8 @@ func TestNewClient(t *testing.T) {
 	t.Run("BadInput", testNewClientBadInput)
 	t.Run("Channel", testNewClientChannel)
 	t.Run("Qos", testNewClientQos)
-	t.Run("QueueDeclare", testNewClientQueueDeclare)
 	t.Run("ExchangeDeclare", testNewClientExchangeDeclare)
+	t.Run("QueueDeclare", testNewClientQueueDeclare)
 	t.Run("QueueBind", testNewClientQueueBind)
 }
 
@@ -43,10 +43,6 @@ func testNewClientBadInput(t *testing.T) {
 		{"consumer name", []harego.ConfigFunc{
 			conn,
 			harego.ConsumerName(""),
-		}},
-		{"queue name", []harego.ConfigFunc{
-			conn,
-			harego.QueueName(""),
 		}},
 		{"exchange name", []harego.ConfigFunc{
 			conn,
@@ -109,25 +105,6 @@ func testNewClientQos(t *testing.T) {
 	testament.AssertInError(t, err, assert.AnError)
 }
 
-func testNewClientQueueDeclare(t *testing.T) {
-	t.Parallel()
-	r := &mocks.RabbitMQ{}
-	defer r.AssertExpectations(t)
-	ch := &mocks.Channel{}
-	defer ch.AssertExpectations(t)
-	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, assert.AnError).Once()
-
-	_, err := harego.NewClient("",
-		harego.Connection(r),
-	)
-	testament.AssertInError(t, err, assert.AnError)
-}
-
 func testNewClientExchangeDeclare(t *testing.T) {
 	t.Parallel()
 	r := &mocks.RabbitMQ{}
@@ -137,15 +114,36 @@ func testNewClientExchangeDeclare(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
 	_, err := harego.NewClient("",
 		harego.Connection(r),
+	)
+	testament.AssertInError(t, err, assert.AnError)
+}
+
+func testNewClientQueueDeclare(t *testing.T) {
+	t.Parallel()
+	r := &mocks.RabbitMQ{}
+	defer r.AssertExpectations(t)
+	ch := &mocks.Channel{}
+	defer ch.AssertExpectations(t)
+
+	r.On("Channel").Return(ch, nil).Once()
+	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, assert.AnError).Once()
+
+	_, err := harego.NewClient("",
+		harego.Connection(r),
+		harego.QueueName(randomString(20)),
 	)
 	testament.AssertInError(t, err, assert.AnError)
 }
@@ -162,12 +160,12 @@ func testNewClientQueueBind(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", queue, false, true, mock.Anything,
-		true, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("QueueDeclare", queue, false, true, mock.Anything,
+		true, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
@@ -203,13 +201,8 @@ func testClientPublishAlreadyClosed(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
-	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
@@ -237,9 +230,6 @@ func testClientPublishPublishError(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 
 	exchName := randomString(10)
 	exchType := harego.ExchangeTypeFanout
@@ -251,8 +241,6 @@ func testClientPublishPublishError(t *testing.T) {
 		exchType.String(),
 		true, true, true, true, mock.Anything,
 	).Return(nil).Once()
-	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
 
@@ -273,10 +261,40 @@ func testClientPublishPublishError(t *testing.T) {
 }
 
 func testClientConsume(t *testing.T) {
+	t.Run("QueueName", testClientConsumeQueueName)
 	t.Run("ChannelError", testClientConsumeChannelError)
 	t.Run("NilHandler", testClientConsumeNilHandler)
 	t.Run("CancelledContext", testClientConsumeCancelledContext)
 	t.Run("AlreadyClosed", testClientConsumeAlreadyClosed)
+}
+
+func testClientConsumeQueueName(t *testing.T) {
+	t.Parallel()
+	r := &mocks.RabbitMQ{}
+	defer r.AssertExpectations(t)
+	ch := &mocks.Channel{}
+	defer ch.AssertExpectations(t)
+	r.On("Channel").Return(ch, nil).Once()
+	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Once()
+
+	consumerName := randomString(10)
+	cl, err := harego.NewClient("",
+		harego.Connection(r),
+		harego.ConsumerName(consumerName),
+		harego.NoWait,
+	)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	err = cl.Consume(ctx, func(*amqp.Delivery) (a harego.AckType, delay time.Duration) { return 0, 0 })
+	testament.AssertInError(t, err, harego.ErrInput)
 }
 
 func testClientConsumeChannelError(t *testing.T) {
@@ -288,12 +306,12 @@ func testClientConsumeChannelError(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
@@ -331,12 +349,12 @@ func testClientConsumeNilHandler(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
@@ -344,6 +362,7 @@ func testClientConsumeNilHandler(t *testing.T) {
 
 	cl, err := harego.NewClient("",
 		harego.Connection(r),
+		harego.QueueName(randomString(10)),
 	)
 	require.NoError(t, err)
 
@@ -362,12 +381,12 @@ func testClientConsumeCancelledContext(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
@@ -375,6 +394,7 @@ func testClientConsumeCancelledContext(t *testing.T) {
 
 	cl, err := harego.NewClient("",
 		harego.Connection(r),
+		harego.QueueName(randomString(10)),
 	)
 	require.NoError(t, err)
 
@@ -418,12 +438,12 @@ func testClientConsumeAlreadyClosed(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
@@ -431,6 +451,7 @@ func testClientConsumeAlreadyClosed(t *testing.T) {
 
 	cl, err := harego.NewClient("",
 		harego.Connection(r),
+		harego.QueueName(randomString(10)),
 	)
 	require.NoError(t, err)
 
@@ -464,13 +485,8 @@ func testClientCloseAlreadyClosed(t *testing.T) {
 	r.On("Channel").Return(ch, nil).Once()
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-		mock.Anything, mock.Anything).
-		Return(amqp.Queue{}, nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
-	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
 	ch.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
@@ -514,13 +530,8 @@ func testClientCloseErrors(t *testing.T) {
 			r.On("Channel").Return(ch, nil).Once()
 			ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
-			ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-				mock.Anything, mock.Anything).
-				Return(amqp.Queue{}, nil).Once()
 			ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				mock.Anything, mock.Anything, mock.Anything).
-				Return(nil).Once()
-			ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
 			ch.On("NotifyClose", mock.Anything).
 				Return(make(chan *amqp.Error, 10)).Once()

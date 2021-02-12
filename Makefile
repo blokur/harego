@@ -44,9 +44,11 @@ ci_tests: ## Run tests for CI.
 integration_deps: ## Install integration test databases. It removes every existing setup.
 	@-docker pull $(rabbitmq_image)
 	@-docker network create harego
-	@docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image) rabbitmq-server --erlang-cookie=harego
+	@docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --user rabbitmq --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image) rabbitmq-server --erlang-cookie=harego
 	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
 	@docker exec -it $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
+	@echo "RabbitMQ has been setup"
+
 
 .PHONY: start_test_container
 start_test_container: ## Start test containers.
@@ -73,7 +75,7 @@ dependencies: ## Install dependencies requried for development operations.
 	@go get -u github.com/git-chglog/git-chglog/cmd/git-chglog
 	@go get github.com/stretchr/testify/mock
 	@go get github.com/vektra/mockery/.../
-	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.32.0
+	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.35.2
 	@go get -u golang.org/x/tools/cmd/stringer
 	@go mod tidy
 

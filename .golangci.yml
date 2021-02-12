@@ -97,6 +97,6 @@ linters:
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 service:
-  golangci-lint-version: 1.32.x
+  golangci-lint-version: 1.35.x
   prepare:
     - echo "here I can run custom commands, but no preparation needed for this repo"

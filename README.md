@@ -8,6 +8,7 @@ High-level library on top of [amqp][amqp].
 
 
 1. [Description](#description)
+   - [Note](#note)
 2. [Development](#development)
    - [Prerequisite](#prerequisite)
    - [Running Tests](#running-tests)
@@ -39,6 +40,11 @@ constructor.
 
 When the `Close()` method is called, all connections will be closed and the
 `Client` will be useless. You can create a new object for more works.
+
+### Note
+
+This library is in beta phase and the API might change until we reach a stable
+release.
 
 ## Development
 

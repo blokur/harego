@@ -55,7 +55,7 @@ func testIntegClientPublish(t *testing.T) {
 
 func testIntegClientPublishConcurrent(t *testing.T, total, workers int) {
 	t.Parallel()
-	c := getClient(t, harego.Workers(workers))
+	c := getClient(t, "", harego.Workers(workers))
 	var wg sync.WaitGroup
 	wg.Add(total)
 	for i := 0; i < total; i++ {

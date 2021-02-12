@@ -11,7 +11,7 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// Client is a concurrent safe construct for publishing a message to an
+// client is a concurrent safe construct for publishing a message to an
 // exchange. It creates multiple workers for safe communication. Zero value is
 // not usable.
 //nolint:maligned // most likely not an issue, but cleaner this way.
@@ -59,14 +59,14 @@ type publishMsg struct {
 
 // NewClient returns an Client instance on the default exchange. You should
 // provide a valid url for reconnection. If you pass a Connection config
-// function, it will initiate it for the first time, not when reconnecting; make
-// sure you also provide a valid url as well.
+// function, it will initiate it for the first time, not when reconnecting;
+// make sure you also provide a valid url as well.
 func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	c := &client{
 		url:           url,
 		exchName:      "default",
-		queueName:     "harego",
+		queueName:     "",
 		workers:       1,
 		exchType:      ExchangeTypeTopic,
 		cancel:        cancel,
@@ -108,21 +108,7 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "setting Qos")
 	}
-	c.queue, err = c.channel.QueueDeclare(
-		c.queueName,
-		c.durable,
-		c.autoDelete,
-		false,
-		c.noWait,
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "declaring queue")
-	}
-	if c.pubChBuff == 0 {
-		c.pubChBuff = 1
-	}
-	c.pubCh = make(chan *publishMsg, c.workers*c.pubChBuff)
+
 	err = c.channel.ExchangeDeclare(
 		c.exchName,
 		c.exchType.String(),
@@ -135,17 +121,35 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "declaring exchange")
 	}
-	err = c.channel.QueueBind(
-		c.queueName,
-		c.routingKey,
-		c.exchName,
-		c.noWait,
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "binding queue")
+
+	if c.queueName != "" {
+		c.queue, err = c.channel.QueueDeclare(
+			c.queueName,
+			c.durable,
+			c.autoDelete,
+			false,
+			c.noWait,
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "declaring queue")
+		}
+		err = c.channel.QueueBind(
+			c.queueName,
+			c.routingKey,
+			c.exchName,
+			c.noWait,
+			nil,
+		)
+		if err != nil {
+			return nil, errors.Wrap(err, "binding queue")
+		}
 	}
 
+	if c.pubChBuff == 0 {
+		c.pubChBuff = 1
+	}
+	c.pubCh = make(chan *publishMsg, c.workers*c.pubChBuff)
 	for i := 0; i < c.workers; i++ {
 		c.publishWorker(ctx)
 	}
@@ -201,10 +205,10 @@ func (c *client) publishWorker(ctx context.Context) {
 }
 
 // Consume is a bloking call that passes each message to the handler and stops
-// handling messages when the context is done. If the handler returns false, the
-// message is returned back to the queue. If the context is cancelled, the
-// Client remains operational but no messages will be deliverd to this
-// handler.
+// handling messages when the context is done. If the handler returns false,
+// the message is returned back to the queue. If the context is cancelled, the
+// Client remains operational but no messages will be deliverd to this handler.
+// Consume returns an error if you don't specify a queue name.
 func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if c.closed {
 		return ErrClosed
@@ -212,6 +216,10 @@ func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if handler == nil {
 		return ErrNilHnadler
 	}
+	if c.queueName == "" {
+		return errors.Wrap(ErrInput, "empty queue name")
+	}
+
 	ctx, c.cancel = context.WithCancel(ctx)
 	c.mu.RLock()
 	msgs, err := c.channel.Consume(
@@ -338,9 +346,6 @@ func (c *client) validate() error {
 	}
 	if c.consumerName == "" {
 		return errors.Wrap(ErrInput, "empty consumer name")
-	}
-	if c.queueName == "" {
-		return errors.Wrap(ErrInput, "empty queue name")
 	}
 	if c.exchName == "" {
 		return errors.Wrap(ErrInput, "empty exchange name")

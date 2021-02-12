@@ -45,7 +45,8 @@ type Client interface {
 	// stops handling messages when the context is done. If the handler returns
 	// false, the message is returned back to the queue. If the context is
 	// cancelled, the Client remains operational but no messages will be
-	// deliverd to this handler.
+	// deliverd to this handler. Consume returns an error if you don't specify
+	// a queue name.
 	Consume(ctx context.Context, handler HandlerFunc) error
 
 	// Close closes the channel and the connection. A closed client is not usable.

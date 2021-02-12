@@ -49,14 +49,15 @@ func randomBody(lines int) string {
 	return strings.Join(body, "\n")
 }
 
-func getClient(t *testing.T, conf ...harego.ConfigFunc) harego.Client {
+// getClient creates a client without a queue if the queueName is empty.
+func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) harego.Client {
 	t.Helper()
 	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
 	vh := "test." + randomString(20)
 	return getNamedClient(t, vh, exchange, queueName, conf...)
 }
 
+// getNamedClient creates a client without a queue if the queueName is empty.
 func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) harego.Client {
 	t.Helper()
 	var (
@@ -101,9 +102,14 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 			return true
 		}, 2*time.Second, 10*time.Millisecond)
 		urls := []string{
-			fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
 			fmt.Sprintf("http://%s:%d/api/exchanges/%s", apiAddress, adminPort, exchange),
 		}
+		if queueName != "" {
+			urls = append(urls,
+				fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
+			)
+		}
+
 		if vh != "" {
 			urls = append(urls, adminURL)
 		}

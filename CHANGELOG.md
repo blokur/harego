@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.3.0"></a>
+## [v0.3.0] - 2021-02-12
+
+### Code Refactoring
+- Refactor queue creation only on Consume call (close [#14](https://github.com/blokur/harego/issues/14))
+
+
 <a name="v0.2.3"></a>
 ## [v0.2.3] - 2020-12-17
 
@@ -93,7 +100,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/blokur/harego/compare/v0.2.3...v0.3.0
 [v0.2.3]: https://github.com/blokur/harego/compare/v0.2.2...v0.2.3
 [v0.2.2]: https://github.com/blokur/harego/compare/v0.2.1...v0.2.2
 [v0.2.1]: https://github.com/blokur/harego/compare/v0.2.0...v0.2.1
