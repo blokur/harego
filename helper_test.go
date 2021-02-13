@@ -50,7 +50,7 @@ func randomBody(lines int) string {
 }
 
 // getClient creates a client without a queue if the queueName is empty.
-func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) harego.Client {
+func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) *harego.Client {
 	t.Helper()
 	exchange := "test." + randomString(20)
 	vh := "test." + randomString(20)
@@ -58,7 +58,7 @@ func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) harego
 }
 
 // getNamedClient creates a client without a queue if the queueName is empty.
-func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) harego.Client {
+func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) *harego.Client {
 	t.Helper()
 	var (
 		adminURL string
@@ -92,7 +92,7 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
 	}, conf...)
-	e, err := harego.NewClient(url,
+	e, err := harego.NewClient(harego.URLConnector(url),
 		conf...,
 	)
 	require.NoError(t, err)

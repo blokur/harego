@@ -14,19 +14,6 @@ type RabbitMQ interface {
 	Close() error
 }
 
-// A Channel can operate queues. This is a subset of the amqp.Channel api.
-//go:generate mockery -name Channel -filename channel_mock.go
-type Channel interface {
-	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
-	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
-	QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
-	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
-	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
-	Qos(prefetchCount, prefetchSize int, global bool) error
-	Close() error
-	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
-}
-
 // A HandlerFunc receives a message when it is available. The returned AckType
 // dictates how to deal with the message. The delay can be 0 or any duration.
 // The consumer will sleep this amount before sending Ack. If the user needs to
@@ -34,11 +21,11 @@ type Channel interface {
 // at your own peril.
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 
-// Client is a concurrent safe construct for publishing a message to an
-// exchange. It creates multiple workers for safe communication. Zero value is
-// not usable.
-type Client interface {
-	// Publish sends the msg to the broker on one of the workers.
+// Interface is the contract in which harego.Client implements. It defines a
+// concurrent safe construct for publishing messages to exchanges, and
+// consuming messages from queues.
+type Interface interface {
+	// Publish sends the msg to the broker via one of the workers.
 	Publish(msg *amqp.Publishing) error
 
 	// Consume is a bloking call that passes each message to the handler and
@@ -51,4 +38,47 @@ type Client interface {
 
 	// Close closes the channel and the connection. A closed client is not usable.
 	Close() error
+}
+
+// A Channel can operate queues. This is a subset of the amqp.Channel api.
+//go:generate mockery -name Channel -filename channel_mock.go
+type Channel interface {
+	// ExchangeDeclare declares an exchange on the server. If the exchange does
+	// not already exist, the server will create it. If the exchange exists,
+	// the server verifies that it is of the provided type, durability and
+	// auto-delete flags.
+	ExchangeDeclare(name, kind string, durable, autoDelete, internal, noWait bool, args amqp.Table) error
+
+	// Publish sends a Publishing from the client to an exchange on the server.
+	Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+
+	// QueueDeclare declares a queue to hold messages and deliver to consumers.
+	// Declaring creates a queue if it doesn't already exist, or ensures that
+	// an existing queue matches the same parameters.
+	QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
+
+	// QueueBind binds an exchange to a queue so that publishings to the
+	// exchange will be routed to the queue when the publishing routing key
+	// matches the binding routing key.
+	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
+
+	// Consume immediately starts delivering queued messages.
+	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+
+	// Qos controls how many messages or how many bytes the server will try to
+	// keep on the network for consumers before receiving delivery acks. The
+	// intent of Qos is to make sure the network buffers stay full between the
+	// server and client.
+	Qos(prefetchCount, prefetchSize int, global bool) error
+
+	// Close initiate a clean channel closure by sending a close message with
+	// the error code set to '200'.
+	Close() error
+
+	// NotifyClose registers a listener for when the server sends a channel or
+	// connection exception in the form of a Connection.Close or Channel.Close
+	// method. Connection exceptions will be broadcast to all open channels and
+	// all channels will be closed, where channel exceptions will only be
+	// broadcast to listeners to this channel.
+	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
 }

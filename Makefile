@@ -9,7 +9,7 @@ run="."
 dir="./..."
 short="-short"
 flags=""
-timeout=40s
+timeout=2m
 
 include ./config/dev.env
 export $(shell sed 's/=.*//' ./config/dev.env)
@@ -105,6 +105,6 @@ clean: ## Clean test caches and tidy up modules.
 
 .PHONY: coverage
 coverage: ## Show the test coverage on browser.
-	go test -covermode=count -coverprofile=coverage.out ./...
+	go test -covermode=count -coverprofile=coverage.out -tags=integration ./...
 	go tool cover -func=coverage.out | tail -n 1
 	go tool cover -html=coverage.out

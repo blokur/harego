@@ -11,12 +11,12 @@ import (
 	"github.com/streadway/amqp"
 )
 
-// client is a concurrent safe construct for publishing a message to an
-// exchange. It creates multiple workers for safe communication. Zero value is
-// not usable.
-//nolint:maligned // most likely not an issue, but cleaner this way.
-type client struct {
-	url          string
+// Client is a concurrent safe construct for publishing a message to exchanges,
+// and consuming messages from queues. It creates multiple workers for safe
+// communication. Zero value is not usable.
+// nolint:maligned // most likely not an issue, but cleaner this way.
+type Client struct {
+	connector    Connector
 	workers      int
 	consumerName string
 	retryDelay   time.Duration
@@ -29,6 +29,7 @@ type client struct {
 	// queue properties.
 	queueName  string
 	routingKey string
+	exclusive  bool
 
 	// exchange properties.
 	exchName   string
@@ -57,26 +58,25 @@ type publishMsg struct {
 	errCh chan error
 }
 
-// NewClient returns an Client instance on the default exchange. You should
-// provide a valid url for reconnection. If you pass a Connection config
-// function, it will initiate it for the first time, not when reconnecting;
-// make sure you also provide a valid url as well.
-func NewClient(url string, conf ...ConfigFunc) (Client, error) {
+// NewClient returns a Client capable of publishing and consuming messages. The
+// default Client config uses the "default" exchange of the "topic" type, both
+// exchange and queues will be marked as "durable", messages will be
+// persistent, and the consumer gets a random name. The connector value should
+// provide a live connection. The connector value is used during reconnection
+// process.
+func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	c := &client{
-		url:           url,
-		exchName:      "default",
-		queueName:     "",
-		workers:       1,
-		exchType:      ExchangeTypeTopic,
-		cancel:        cancel,
-		deliveryMode:  DeliveryModePersistent,
-		prefetchCount: 1,
-		prefetchSize:  0,
-		durable:       true,
-		pubChBuff:     10,
-		consumerName:  internal.GetRandomName(),
-		retryDelay:    100 * time.Millisecond,
+	c := &Client{
+		connector:    connector,
+		exchName:     "default",
+		workers:      1,
+		exchType:     ExchangeTypeTopic,
+		cancel:       cancel,
+		deliveryMode: DeliveryModePersistent,
+		durable:      true,
+		pubChBuff:    10,
+		consumerName: internal.GetRandomName(),
+		retryDelay:   100 * time.Millisecond,
 	}
 	for _, cnf := range conf {
 		err := cnf(c)
@@ -84,7 +84,6 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 			return nil, err
 		}
 	}
-	c.started = true
 	if c.prefetchCount < c.workers {
 		c.prefetchCount = c.workers
 	}
@@ -92,12 +91,9 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "validating configuration")
 	}
-	if c.conn == nil {
-		conn, err := amqp.Dial(url)
-		if err != nil {
-			return nil, errors.Wrapf(err, "dialling %q", url)
-		}
-		c.conn = &rabbitWrapper{conn}
+	c.conn, err = c.connector()
+	if err != nil {
+		return nil, errors.Wrap(err, "getting a connection to the broker")
 	}
 	c.channel, err = c.conn.Channel()
 	if err != nil {
@@ -127,7 +123,7 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 			c.queueName,
 			c.durable,
 			c.autoDelete,
-			false,
+			c.exclusive,
 			c.noWait,
 			nil,
 		)
@@ -154,11 +150,12 @@ func NewClient(url string, conf ...ConfigFunc) (Client, error) {
 		c.publishWorker(ctx)
 	}
 	c.registerReconnect(ctx)
+	c.started = true
 	return c, nil
 }
 
-// Publish sends the msg to the broker on one of the workers.
-func (c *client) Publish(msg *amqp.Publishing) error {
+// Publish sends the msg to the broker via one of the workers.
+func (c *Client) Publish(msg *amqp.Publishing) error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -173,7 +170,7 @@ func (c *client) Publish(msg *amqp.Publishing) error {
 	return <-err
 }
 
-func (c *client) publishWorker(ctx context.Context) {
+func (c *Client) publishWorker(ctx context.Context) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	go func() {
@@ -209,7 +206,7 @@ func (c *client) publishWorker(ctx context.Context) {
 // the message is returned back to the queue. If the context is cancelled, the
 // Client remains operational but no messages will be deliverd to this handler.
 // Consume returns an error if you don't specify a queue name.
-func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
+func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 	if c.closed {
 		return ErrClosed
 	}
@@ -226,7 +223,7 @@ func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
 		c.queueName,
 		c.consumerName,
 		c.autoAck,
-		false,
+		c.exclusive,
 		false,
 		c.noWait,
 		nil,
@@ -263,7 +260,7 @@ func (c *client) Consume(ctx context.Context, handler HandlerFunc) error {
 	return ctx.Err()
 }
 
-func (c *client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
+func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 	for msg := range msgs {
 		msg := msg
 		a, delay := handler(&msg)
@@ -304,8 +301,8 @@ func (c *client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
 	}
 }
 
-// Close closes the channel and the connection. A closed client if not usable.
-func (c *client) Close() error {
+// Close closes the channel and the connection. A closed client is not usable.
+func (c *Client) Close() error {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -337,9 +334,9 @@ func (c *client) Close() error {
 	return err.ErrorOrNil()
 }
 
-func (c *client) validate() error {
-	if c.conn == nil && c.url == "" {
-		return errors.Wrap(ErrInput, "empty RabbitMQ connection")
+func (c *Client) validate() error {
+	if c.connector == nil {
+		return errors.Wrap(ErrInput, "empty connection function (Connector)")
 	}
 	if c.workers < 1 {
 		return errors.Wrapf(ErrInput, "not enough workers: %d", c.workers)
@@ -365,7 +362,7 @@ func (c *client) validate() error {
 	return nil
 }
 
-func (c *client) registerReconnect(ctx context.Context) {
+func (c *Client) registerReconnect(ctx context.Context) {
 	c.mu.RLock()
 	if c.closed {
 		c.mu.RUnlock()
@@ -416,15 +413,15 @@ func (c *client) registerReconnect(ctx context.Context) {
 	}()
 }
 
-func (c *client) dial() error {
+func (c *Client) dial() error {
 	// already reconnected
 	if c.conn != nil {
 		return nil
 	}
-	conn, err := amqp.Dial(c.url)
+	conn, err := c.connector()
 	if err != nil {
-		return errors.Wrapf(err, "creating a connection to %q", c.url)
+		return errors.Wrap(err, "getting a connection to the broker")
 	}
-	c.conn = &rabbitWrapper{conn}
+	c.conn = conn
 	return nil
 }

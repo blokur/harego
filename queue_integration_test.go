@@ -197,7 +197,7 @@ func testIntegClientConsumeNack(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		err = cons1.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+		err = cons1.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
 			select {
 			case <-ctx.Done():
 				t.Error("cons1 already done")
@@ -253,7 +253,7 @@ func testIntegClientConsumeReject(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		err = cons1.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+		err = cons1.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
 			cancel()
 			return harego.AckTypeReject, 0
 		})
