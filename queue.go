@@ -47,7 +47,9 @@ type Client struct {
 
 	pubChBuff int
 	pubCh     chan *publishMsg
+	consumeCh chan amqp.Delivery // used for consuming messages and setup Consume loop.
 	once      sync.Once
+	ctx       context.Context // for turning off the client.
 	cancel    func()
 	closed    bool
 	started   bool
@@ -71,12 +73,13 @@ func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 		exchName:     "default",
 		workers:      1,
 		exchType:     ExchangeTypeTopic,
-		cancel:       cancel,
 		deliveryMode: DeliveryModePersistent,
 		durable:      true,
 		pubChBuff:    10,
 		consumerName: internal.GetRandomName(),
 		retryDelay:   100 * time.Millisecond,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 	for _, cnf := range conf {
 		err := cnf(c)
@@ -95,51 +98,13 @@ func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "getting a connection to the broker")
 	}
-	c.channel, err = c.conn.Channel()
+	err = c.setupChannel()
 	if err != nil {
-		return nil, errors.Wrap(err, "creating channel")
+		return nil, errors.Wrap(err, "setting up a channel")
 	}
-	// to make sure rabbitmq is fair on workers.
-	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, true)
+	err = c.setupQueue()
 	if err != nil {
-		return nil, errors.Wrap(err, "setting Qos")
-	}
-
-	err = c.channel.ExchangeDeclare(
-		c.exchName,
-		c.exchType.String(),
-		c.durable,
-		c.autoDelete,
-		c.internal,
-		c.noWait,
-		nil,
-	)
-	if err != nil {
-		return nil, errors.Wrap(err, "declaring exchange")
-	}
-
-	if c.queueName != "" {
-		c.queue, err = c.channel.QueueDeclare(
-			c.queueName,
-			c.durable,
-			c.autoDelete,
-			c.exclusive,
-			c.noWait,
-			nil,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "declaring queue")
-		}
-		err = c.channel.QueueBind(
-			c.queueName,
-			c.routingKey,
-			c.exchName,
-			c.noWait,
-			nil,
-		)
-		if err != nil {
-			return nil, errors.Wrap(err, "binding queue")
-		}
+		return nil, errors.Wrap(err, "setting up a queue")
 	}
 
 	if c.pubChBuff == 0 {
@@ -186,7 +151,7 @@ func (c *Client) publishWorker(ctx context.Context) {
 			if c.channel == nil {
 				c.mu.RUnlock()
 				msg.errCh <- ErrClosed
-				break
+				return
 			}
 			err := c.channel.Publish(
 				c.exchName,
@@ -217,51 +182,34 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 		return errors.Wrap(ErrInput, "empty queue name")
 	}
 
-	ctx, c.cancel = context.WithCancel(ctx)
-	c.mu.RLock()
-	msgs, err := c.channel.Consume(
-		c.queueName,
-		c.consumerName,
-		c.autoAck,
-		c.exclusive,
-		false,
-		c.noWait,
-		nil,
-	)
-	c.mu.RUnlock()
+	c.mu.Lock()
+	c.ctx, c.cancel = context.WithCancel(ctx)
+	// consumeCh also signals we are in Consume mode.
+	c.consumeCh = make(chan amqp.Delivery, c.workers*c.pubChBuff)
+	c.mu.Unlock()
+	err := c.setupConsumeCh(c.ctx)
 	if err != nil {
-		return errors.Wrap(err, "getting consume channel")
+		return errors.Wrap(err, "setting up consume process")
 	}
-	gotMsgs := make(chan amqp.Delivery, c.workers*c.pubChBuff)
-	go func() {
-		<-ctx.Done()
-		close(gotMsgs)
-	}()
 
 	go func() {
-		for msg := range msgs {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			gotMsgs <- msg
-		}
+		<-c.ctx.Done()
+		close(c.consumeCh)
 	}()
 	var wg sync.WaitGroup
 	wg.Add(c.workers)
 	for i := 0; i < c.workers; i++ {
 		go func() {
 			defer wg.Done()
-			c.consumeLoop(gotMsgs, handler)
+			c.consumeLoop(handler)
 		}()
 	}
 	wg.Wait()
-	return ctx.Err()
+	return c.ctx.Err()
 }
 
-func (c *Client) consumeLoop(msgs <-chan amqp.Delivery, handler HandlerFunc) {
-	for msg := range msgs {
+func (c *Client) consumeLoop(handler HandlerFunc) {
+	for msg := range c.consumeCh {
 		msg := msg
 		a, delay := handler(&msg)
 		switch a {
@@ -388,29 +336,46 @@ func (c *Client) registerReconnect(ctx context.Context) {
 				c.conn.Close()
 				c.conn = nil
 			}
-
-			channel := func() error {
-				var err error
-				c.channel, err = c.conn.Channel()
-				return errors.Wrap(err, "opening a new channel")
-			}
-			var err error
-			for {
-				time.Sleep(c.retryDelay)
-				if c.closed {
-					return
-				}
-				err = c.dial()
-				if err == nil {
-					err = channel()
-					if err == nil {
-						break
-					}
-				}
-			}
+			c.keepConnecting()
 			go c.registerReconnect(ctx)
 		}
 	}()
+}
+
+func (c *Client) keepConnecting() {
+	channel := func() error {
+		var err error
+		c.channel, err = c.conn.Channel()
+		return errors.Wrap(err, "opening a new channel")
+	}
+	var err error
+	for {
+		time.Sleep(c.retryDelay)
+		if c.closed {
+			return
+		}
+		err = c.dial()
+		if err != nil {
+			continue
+		}
+		err = channel()
+		if err != nil {
+			continue
+		}
+		err = c.setupChannel()
+		if err != nil {
+			continue
+		}
+		err = c.setupQueue()
+		if err != nil {
+			continue
+		}
+		err = c.setupConsumeCh(c.ctx)
+		if err != nil {
+			continue
+		}
+		return
+	}
 }
 
 func (c *Client) dial() error {
@@ -423,5 +388,83 @@ func (c *Client) dial() error {
 		return errors.Wrap(err, "getting a connection to the broker")
 	}
 	c.conn = conn
+	return nil
+}
+
+func (c *Client) setupChannel() error {
+	var err error
+	c.channel, err = c.conn.Channel()
+	if err != nil {
+		return errors.Wrap(err, "creating channel")
+	}
+	// to make sure rabbitmq is fair on workers.
+	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, true)
+	if err != nil {
+		return errors.Wrap(err, "setting Qos")
+	}
+
+	err = c.channel.ExchangeDeclare(
+		c.exchName,
+		c.exchType.String(),
+		c.durable,
+		c.autoDelete,
+		c.internal,
+		c.noWait,
+		nil,
+	)
+	return errors.Wrap(err, "declaring exchange")
+}
+
+func (c *Client) setupQueue() error {
+	if c.queueName != "" {
+		var err error
+		c.queue, err = c.channel.QueueDeclare(
+			c.queueName,
+			c.durable,
+			c.autoDelete,
+			c.exclusive,
+			c.noWait,
+			nil,
+		)
+		if err != nil {
+			return errors.Wrap(err, "declaring queue")
+		}
+		err = c.channel.QueueBind(
+			c.queueName,
+			c.routingKey,
+			c.exchName,
+			c.noWait,
+			nil,
+		)
+		return errors.Wrap(err, "binding queue")
+	}
+	return nil
+}
+
+func (c *Client) setupConsumeCh(ctx context.Context) error {
+	if c.consumeCh != nil {
+		msgs, err := c.channel.Consume(
+			c.queueName,
+			c.consumerName,
+			c.autoAck,
+			c.exclusive,
+			false,
+			c.noWait,
+			nil,
+		)
+		if err != nil {
+			return errors.Wrap(err, "getting consume channel")
+		}
+		go func() {
+			for msg := range msgs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				c.consumeCh <- msg
+			}
+		}()
+	}
 	return nil
 }

@@ -6,10 +6,14 @@
 
 
 <a name="v0.3.0"></a>
-## [v0.3.0] - 2021-02-12
+## [v0.3.0] - 2021-02-13
 
 ### Code Refactoring
+- Refactor connection setup and NewClient function
 - Refactor queue creation only on Consume call (close [#14](https://github.com/blokur/harego/issues/14))
+
+### Fixed
+- Fix reconnection while consuming (ref [#7](https://github.com/blokur/harego/issues/7))
 
 
 <a name="v0.2.3"></a>
