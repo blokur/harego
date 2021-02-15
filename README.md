@@ -9,22 +9,25 @@ High-level library on top of [amqp][amqp].
 
 1. [Description](#description)
    - [Note](#note)
-2. [Development](#development)
+2. [Usage](#usage)
+   - [NewClient](#new-client)
+   - [Publish](#publish)
+   - [Consume](#consume)
+   - [Delays](#delays)
+   - [Requeueing](#requeueing)
+3. [Development](#development)
    - [Prerequisite](#prerequisite)
-   - [Running Tests](#running-tests)
-   - [Make Examples](#make-examples)
+   - [Running Tests](#running_tests)
+   - [Make Examples](#make_examples)
    - [Changelog](#changelog)
    - [Mocks](#mocks)
    - [RabbitMQ](#rabbitmq)
-3. [References](#references)
-
 
 ## Description
 
-A harego.Client is a concurrent safe queue manager for RabbitMQ, and a
+A `harego.Client` is a concurrent safe queue manager for RabbitMQ, and a
 high-level implementation on top of [amqp](github.com/streadway/amqp) library.
-The only requirement for an Client to operate is the address to the broker. The
-Client creates one or more workers for publishing/consuming messages. The
+The Client creates one or more workers for publishing/consuming messages. The
 default values are chosen to make the Client a durable queue working with the
 `default` exchange and `topic` kind. Client can be configure by passing
 provided `ConfigFunc` functions to NewClient() constructor.
@@ -46,12 +49,94 @@ When the `Close()` method is called, all connections will be closed and the
 This library is in beta phase and the API might change until we reach a stable
 release.
 
+## Usage
+
+### NewClient
+
+The only requirement for the NewClient function is a Connector to connect to the
+broker when needed:
+
+```go
+// to use an address:
+harego.NewClient(harego.URLConnector(address))
+// to use an amqp connection:
+harego.NewClient(harego.AMQPConnector(conn))
+```
+
+The connector is used when the connection is lost, so the Client can initiate a
+new connection.
+
+### Publish
+
+In this setup the message is sent to the `myexchange` exchange:
+
+```go
+client, err := harego.NewClient(harego.URLConnector(address),
+    harego.ExchangeName("myexchange"),
+)
+// handle the error.
+err = client.Publish(&amqp.Publishing{
+    Body: []byte(msg),
+})
+// handle the error.
+```
+
+### Consume
+
+In this setup the `myqueue` is bound to the `myexchange` exchange, and handler
+is called for each message that are read from this queue:
+
+```go
+client, err := harego.NewClient(harego.URLConnector(address),
+    harego.ExchangeName("myexchange"),
+    harego.QueueName("myqueue"),
+)
+// handle the error.
+err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+   return harego.AckTypeAck, 0
+})
+// handle the error.
+```
+
+You can create multiple workers in the above example for concurrently handle
+multiple messages:
+
+```go
+client, err := harego.NewClient(harego.URLConnector(address),
+    harego.ExchangeName("myexchange"),
+    harego.QueueName("myqueue"),
+    harego.Workers(20),
+)
+// handle the error.
+err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+   return harego.AckTypeAck, 0
+})
+// handle the error.
+```
+
+The handler will receive 20 messages concurrently and the Ack is sent for each
+message separately.
+
+### Delays
+
+If the returned duration is 0, the acknowledgement is sent to the broker
+immediately. Otherwise Consume function sleeps for that duration before it's
+been sent. Please note that the delay will cause the current handler to sleep
+for this duration, therefore you need enough workers to be able to handle next
+available messages.
+
+### Requeueing
+
+If you return a `harego.AckTypeRequeue` from the handler, the message is sent
+back to the same queue. This means this message will be consumed after all
+messages in the queue is consumed.
+
 ## Development
 
 ### Prerequisite
 
 This project supports Go > `1.14`. To run targets from the `Makefile` you need
-to install GNU make.
+to install GNU make. You also need docker installed for integration tests.
 
 In order to install dependencies:
 
@@ -129,8 +214,6 @@ RabbitMQ instance:
 ```bash
 make integration_deps
 ```
-
-## References
 
 [reflex]: https://github.com/cespare/reflex
 [amqp]: github.com/streadway/amqp

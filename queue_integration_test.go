@@ -104,14 +104,17 @@ func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 	t.Parallel()
 	exchange := "test." + randomString(20)
 	queueName := "test." + randomString(20)
+	routingKey := "test." + randomString(20)
 	vh := "test." + randomString(20)
 
 	pub := getNamedClient(t, vh, exchange, "",
 		harego.Workers(workers),
+		harego.RoutingKey(routingKey),
 	)
 	defer pub.Close()
 	cons := getNamedClient(t, vh, exchange, queueName,
 		harego.Workers(workers),
+		harego.RoutingKey(routingKey),
 	)
 	defer cons.Close()
 
@@ -150,18 +153,16 @@ func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 		testament.AssertInError(t, err, context.Canceled)
 	}()
 	assert.Eventually(t, func() bool {
+		wg.Wait()
 		muGot.RLock()
 		defer muGot.RUnlock()
-		muWant.RLock()
-		defer muWant.RUnlock()
-		if len(want) == len(got) {
+		if len(got) == total {
 			cancel()
 			return true
 		}
 		return false
-	}, time.Minute, 10*time.Millisecond)
+	}, 5*time.Minute, 30*time.Millisecond)
 
-	wg.Wait()
 	muGot.RLock()
 	defer muGot.RUnlock()
 	muWant.RLock()
@@ -626,7 +627,6 @@ func testIntegClientReconnectConsume(t *testing.T) {
 	go func() {
 		<-restart
 		restartRabbitMQ(t, container)
-		fmt.Println("restarted")
 	}()
 
 	wg.Add(1)
@@ -643,7 +643,6 @@ func testIntegClientReconnectConsume(t *testing.T) {
 				if g >= int32(total) {
 					cancel()
 				}
-				fmt.Println(calls)
 				return harego.AckTypeAck, 0
 			})
 			testament.AssertInError(t, err, context.Canceled)
@@ -679,7 +678,7 @@ func testIntegClientClose(t *testing.T) {
 			if err == nil {
 				return
 			}
-			assert.Equal(t, harego.ErrClosed, errors.Cause(err))
+			assert.Contains(t, []error{harego.ErrClosed, context.Canceled}, errors.Cause(err))
 		}()
 	}
 
@@ -691,12 +690,12 @@ func testIntegClientClose(t *testing.T) {
 			if err == nil {
 				return
 			}
-			assert.Equal(t, harego.ErrClosed, errors.Cause(err))
+			assert.Contains(t, []error{harego.ErrClosed, context.Canceled}, errors.Cause(err))
 		}()
 	}
 
 	assert.Eventually(t, func() bool {
 		wg.Wait()
 		return true
-	}, 60*time.Second, 10*time.Millisecond)
+	}, 2*time.Minute, 30*time.Millisecond)
 }

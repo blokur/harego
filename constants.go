@@ -8,18 +8,18 @@ import "github.com/streadway/amqp"
 type AckType int
 
 const (
-	// AckTypeAck causes the message to be removed in broker. The multiple value is
-	// false, causing the broker to act on one message.
+	// AckTypeAck causes the message to be removed in broker. The multiple value
+	// is false, causing the broker to act on one message.
 	AckTypeAck AckType = iota
 
-	// AckTypeNack causes the message to be requeued in broker. The multiple value
-	// is false, causing the broker to act on one message.
+	// AckTypeNack causes the message to be requeued in broker. The multiple
+	// value is false, causing the broker to act on one message.
 	AckTypeNack
 
-	// AckTypeReject causes the message to be dropped in broker. AckTypeNack must
-	// not be used to select or requeue messages the client wishes not to handle,
-	// rather it is to inform the server that the client is incapable of handling
-	// this message at this time.
+	// AckTypeReject causes the message to be dropped in broker. AckTypeNack
+	// must not be used to select or requeue messages the client wishes not to
+	// handle, rather it is to inform the server that the client is incapable
+	// of handling this message at this time.
 	AckTypeReject
 
 	// AckTypeRequeue causes the message to be requeued back to the end of the
@@ -77,13 +77,13 @@ type DeliveryMode uint8
 
 const (
 	// DeliveryModeTransient means higher throughput but messages will not be
-	// restored on broker restart. The delivery mode of publishings is unrelated
-	// to the durability of the queues they reside on. Transient messages will not
-	// be restored to durable queues.
+	// restored on broker restart. The delivery mode of publishings is
+	// unrelated to the durability of the queues they reside on. Transient
+	// messages will not be restored to durable queues.
 	DeliveryModeTransient = DeliveryMode(amqp.Transient)
 
-	// DeliveryModePersistent messages will be restored to
-	// durable queues and lost on non-durable queues during server restart.
+	// DeliveryModePersistent messages will be restored to durable queues and
+	// lost on non-durable queues during server restart.
 	DeliveryModePersistent = DeliveryMode(amqp.Persistent)
 )
 

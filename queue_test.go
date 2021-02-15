@@ -49,6 +49,13 @@ func TestConfigFunc(t *testing.T) {
 			testament.AssertInError(t, err, harego.ErrAlreadyConfigured)
 		})
 	}
+	_, err := harego.NewClient(func() (harego.RabbitMQ, error) { return &mocks.RabbitMQSimple{}, nil },
+		harego.QueueName(randomString(10)),
+		harego.RoutingKey(randomString(10)),
+		func(*harego.Client) error {
+			return assert.AnError
+		})
+	testament.AssertInError(t, err, assert.AnError)
 }
 
 func TestNewClient(t *testing.T) {

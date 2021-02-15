@@ -6,7 +6,7 @@
 
 
 <a name="v0.3.0"></a>
-## [v0.3.0] - 2021-02-13
+## [v0.3.0] - 2021-02-15
 
 ### Code Refactoring
 - Refactor connection setup and NewClient function
@@ -14,6 +14,9 @@
 
 ### Fixed
 - Fix reconnection while consuming (ref [#7](https://github.com/blokur/harego/issues/7))
+
+### Update
+- Update documentation and minor test fixes
 
 
 <a name="v0.2.3"></a>

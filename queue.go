@@ -119,7 +119,7 @@ func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 	return c, nil
 }
 
-// Publish sends the msg to the broker via one of the workers.
+// Publish sends the msg to the broker via the next available workers.
 func (c *Client) Publish(msg *amqp.Publishing) error {
 	c.mu.RLock()
 	if c.closed {
@@ -416,55 +416,56 @@ func (c *Client) setupChannel() error {
 }
 
 func (c *Client) setupQueue() error {
-	if c.queueName != "" {
-		var err error
-		c.queue, err = c.channel.QueueDeclare(
-			c.queueName,
-			c.durable,
-			c.autoDelete,
-			c.exclusive,
-			c.noWait,
-			nil,
-		)
-		if err != nil {
-			return errors.Wrap(err, "declaring queue")
-		}
-		err = c.channel.QueueBind(
-			c.queueName,
-			c.routingKey,
-			c.exchName,
-			c.noWait,
-			nil,
-		)
-		return errors.Wrap(err, "binding queue")
+	if c.queueName == "" {
+		return nil
 	}
-	return nil
+	var err error
+	c.queue, err = c.channel.QueueDeclare(
+		c.queueName,
+		c.durable,
+		c.autoDelete,
+		c.exclusive,
+		c.noWait,
+		nil,
+	)
+	if err != nil {
+		return errors.Wrap(err, "declaring queue")
+	}
+	err = c.channel.QueueBind(
+		c.queueName,
+		c.routingKey,
+		c.exchName,
+		c.noWait,
+		nil,
+	)
+	return errors.Wrap(err, "binding queue")
 }
 
 func (c *Client) setupConsumeCh(ctx context.Context) error {
-	if c.consumeCh != nil {
-		msgs, err := c.channel.Consume(
-			c.queueName,
-			c.consumerName,
-			c.autoAck,
-			c.exclusive,
-			false,
-			c.noWait,
-			nil,
-		)
-		if err != nil {
-			return errors.Wrap(err, "getting consume channel")
-		}
-		go func() {
-			for msg := range msgs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				c.consumeCh <- msg
-			}
-		}()
+	if c.consumeCh == nil {
+		return nil
 	}
+	msgs, err := c.channel.Consume(
+		c.queueName,
+		c.consumerName,
+		c.autoAck,
+		c.exclusive,
+		false,
+		c.noWait,
+		nil,
+	)
+	if err != nil {
+		return errors.Wrap(err, "getting consume channel")
+	}
+	go func() {
+		for msg := range msgs {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+			c.consumeCh <- msg
+		}
+	}()
 	return nil
 }

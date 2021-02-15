@@ -1,7 +1,6 @@
 package harego
 
 import (
-	"context"
 	"time"
 
 	"github.com/streadway/amqp"
@@ -20,25 +19,6 @@ type RabbitMQ interface {
 // requeue the message, they may mutate the message if required. Mutate the msg
 // at your own peril.
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
-
-// Interface is the contract in which harego.Client implements. It defines a
-// concurrent safe construct for publishing messages to exchanges, and
-// consuming messages from queues.
-type Interface interface {
-	// Publish sends the msg to the broker via one of the workers.
-	Publish(msg *amqp.Publishing) error
-
-	// Consume is a bloking call that passes each message to the handler and
-	// stops handling messages when the context is done. If the handler returns
-	// false, the message is returned back to the queue. If the context is
-	// cancelled, the Client remains operational but no messages will be
-	// deliverd to this handler. Consume returns an error if you don't specify
-	// a queue name.
-	Consume(ctx context.Context, handler HandlerFunc) error
-
-	// Close closes the channel and the connection. A closed client is not usable.
-	Close() error
-}
 
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
 //go:generate mockery -name Channel -filename channel_mock.go

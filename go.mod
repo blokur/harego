@@ -27,7 +27,7 @@ require (
 	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/objx v0.3.0 // indirect
 	github.com/stretchr/testify v1.7.0
-	github.com/testcontainers/testcontainers-go v0.7.0
+	github.com/testcontainers/testcontainers-go v0.9.0
 	golang.org/x/net v0.0.0-20201021035429-f5854403a974 // indirect
 	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
 	golang.org/x/sys v0.0.0-20210124154548-22da62e12c0c // indirect
