@@ -5,6 +5,13 @@
 
 
 
+<a name="v0.3.1"></a>
+## [v0.3.1] - 2021-03-31
+
+### Implement
+- Implement providing queue arguments (close [#16](https://github.com/blokur/harego/issues/16))
+
+
 <a name="v0.3.0"></a>
 ## [v0.3.0] - 2021-02-15
 
@@ -107,7 +114,8 @@
 
 
 
-[Unreleased]: https://github.com/blokur/harego/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/blokur/harego/compare/v0.3.1...HEAD
+[v0.3.1]: https://github.com/blokur/harego/compare/v0.3.0...v0.3.1
 [v0.3.0]: https://github.com/blokur/harego/compare/v0.2.3...v0.3.0
 [v0.2.3]: https://github.com/blokur/harego/compare/v0.2.2...v0.2.3
 [v0.2.2]: https://github.com/blokur/harego/compare/v0.2.1...v0.2.2

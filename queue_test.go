@@ -11,6 +11,7 @@ import (
 	"github.com/blokur/harego"
 	"github.com/blokur/harego/mocks"
 	"github.com/blokur/testament"
+	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	"github.com/streadway/amqp"
 	"github.com/stretchr/testify/assert"
@@ -22,6 +23,7 @@ func TestConfigFunc(t *testing.T) {
 	t.Parallel()
 	tcs := map[string]harego.ConfigFunc{
 		"QueueName":        harego.QueueName(randomString(10)),
+		"QueueArgs":        harego.QueueArgs(map[string]interface{}{}),
 		"RoutingKey":       harego.RoutingKey(randomString(10)),
 		"Workers":          harego.Workers(rand.Intn(9) + 1),
 		"WithDeliveryMode": harego.WithDeliveryMode(harego.DeliveryModePersistent),
@@ -187,6 +189,11 @@ func testNewClientQueueDeclare(t *testing.T) {
 }
 
 func testNewClientQueueBind(t *testing.T) {
+	t.Run("NoArgs", testNewClientQueueBindNoArgs)
+	t.Run("Args", testNewClientQueueBindArgs)
+}
+
+func testNewClientQueueBindNoArgs(t *testing.T) {
 	t.Parallel()
 	r := &mocks.RabbitMQ{}
 	defer r.AssertExpectations(t)
@@ -211,6 +218,49 @@ func testNewClientQueueBind(t *testing.T) {
 		harego.PrefetchCount(prefetchCount),
 		harego.PrefetchSize(prefetchSize),
 		harego.QueueName(queue),
+		harego.NotDurable,
+		harego.AutoDelete,
+		harego.NoWait,
+	)
+	testament.AssertInError(t, err, assert.AnError)
+}
+
+func testNewClientQueueBindArgs(t *testing.T) {
+	t.Parallel()
+	r := &mocks.RabbitMQ{}
+	defer r.AssertExpectations(t)
+	ch := &mocks.Channel{}
+	defer ch.AssertExpectations(t)
+	prefetchCount := rand.Intn(9999)
+	prefetchSize := rand.Intn(9999)
+	queue := randomString(10)
+	args := map[string]interface{}{
+		"arg1": "val1",
+		"arg2": "val2",
+	}
+
+	r.On("Channel").Return(ch, nil).Once()
+	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
+		Return(nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("QueueDeclare", queue, false, true, mock.Anything,
+		true, mock.MatchedBy(func(a amqp.Table) bool {
+			if diff := cmp.Diff(amqp.Table(args), a); diff != "" {
+				t.Errorf("(-want +got):\n%s", diff)
+			}
+			return true
+		})).
+		Return(amqp.Queue{}, nil).Once()
+	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(assert.AnError).Once()
+
+	_, err := harego.NewClient(func() (harego.RabbitMQ, error) { return r, nil },
+		harego.PrefetchCount(prefetchCount),
+		harego.PrefetchSize(prefetchSize),
+		harego.QueueName(queue),
+		harego.QueueArgs(args),
 		harego.NotDurable,
 		harego.AutoDelete,
 		harego.NoWait,

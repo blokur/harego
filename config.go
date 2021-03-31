@@ -57,6 +57,17 @@ func QueueName(name string) ConfigFunc {
 	}
 }
 
+// QueueArgs sets the args possed to the QueueDeclare method.
+func QueueArgs(args amqp.Table) ConfigFunc {
+	return func(c *Client) error {
+		if c.started {
+			return ErrAlreadyConfigured
+		}
+		c.queueArgs = args
+		return nil
+	}
+}
+
 // RoutingKey sets the routing key of the queue.
 func RoutingKey(key string) ConfigFunc {
 	return func(c *Client) error {

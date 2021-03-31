@@ -30,6 +30,7 @@ type Client struct {
 	queueName  string
 	routingKey string
 	exclusive  bool
+	queueArgs  amqp.Table
 
 	// exchange properties.
 	exchName   string
@@ -212,6 +213,7 @@ func (c *Client) consumeLoop(handler HandlerFunc) {
 	for msg := range c.consumeCh {
 		msg := msg
 		a, delay := handler(&msg)
+		// nolint:errcheck // will be checked once provided a way to log errors.
 		switch a {
 		case AckTypeAck:
 			time.Sleep(delay)
@@ -318,6 +320,7 @@ func (c *Client) registerReconnect(ctx context.Context) {
 	}
 	c.mu.RUnlock()
 	ch := c.channel.NotifyClose(make(chan *amqp.Error))
+	// nolint:errcheck // will be checked once provided a way to log errors.
 	go func() {
 		select {
 		case <-ctx.Done():
@@ -426,7 +429,7 @@ func (c *Client) setupQueue() error {
 		c.autoDelete,
 		c.exclusive,
 		c.noWait,
-		nil,
+		c.queueArgs,
 	)
 	if err != nil {
 		return errors.Wrap(err, "declaring queue")
