@@ -135,7 +135,7 @@ messages in the queue is consumed.
 
 ### Prerequisite
 
-This project supports Go > `1.14`. To run targets from the `Makefile` you need
+This project supports Go >= `1.17`. To run targets from the `Makefile` you need
 to install GNU make. You also need docker installed for integration tests.
 
 In order to install dependencies:
