@@ -2,7 +2,7 @@ package harego
 
 import (
 	"github.com/pkg/errors"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.

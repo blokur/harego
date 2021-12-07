@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	amqp "github.com/streadway/amqp"
+	amqp091 "github.com/rabbitmq/amqp091-go"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -28,20 +28,20 @@ func (_m *Channel) Close() error {
 }
 
 // Consume provides a mock function with given fields: queue, consumer, autoAck, exclusive, noLocal, noWait, args
-func (_m *Channel) Consume(queue string, consumer string, autoAck bool, exclusive bool, noLocal bool, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error) {
+func (_m *Channel) Consume(queue string, consumer string, autoAck bool, exclusive bool, noLocal bool, noWait bool, args amqp091.Table) (<-chan amqp091.Delivery, error) {
 	ret := _m.Called(queue, consumer, autoAck, exclusive, noLocal, noWait, args)
 
-	var r0 <-chan amqp.Delivery
-	if rf, ok := ret.Get(0).(func(string, string, bool, bool, bool, bool, amqp.Table) <-chan amqp.Delivery); ok {
+	var r0 <-chan amqp091.Delivery
+	if rf, ok := ret.Get(0).(func(string, string, bool, bool, bool, bool, amqp091.Table) <-chan amqp091.Delivery); ok {
 		r0 = rf(queue, consumer, autoAck, exclusive, noLocal, noWait, args)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan amqp.Delivery)
+			r0 = ret.Get(0).(<-chan amqp091.Delivery)
 		}
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, string, bool, bool, bool, bool, amqp.Table) error); ok {
+	if rf, ok := ret.Get(1).(func(string, string, bool, bool, bool, bool, amqp091.Table) error); ok {
 		r1 = rf(queue, consumer, autoAck, exclusive, noLocal, noWait, args)
 	} else {
 		r1 = ret.Error(1)
@@ -51,11 +51,11 @@ func (_m *Channel) Consume(queue string, consumer string, autoAck bool, exclusiv
 }
 
 // ExchangeDeclare provides a mock function with given fields: name, kind, durable, autoDelete, internal, noWait, args
-func (_m *Channel) ExchangeDeclare(name string, kind string, durable bool, autoDelete bool, internal bool, noWait bool, args amqp.Table) error {
+func (_m *Channel) ExchangeDeclare(name string, kind string, durable bool, autoDelete bool, internal bool, noWait bool, args amqp091.Table) error {
 	ret := _m.Called(name, kind, durable, autoDelete, internal, noWait, args)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, bool, bool, bool, bool, amqp.Table) error); ok {
+	if rf, ok := ret.Get(0).(func(string, string, bool, bool, bool, bool, amqp091.Table) error); ok {
 		r0 = rf(name, kind, durable, autoDelete, internal, noWait, args)
 	} else {
 		r0 = ret.Error(0)
@@ -65,15 +65,15 @@ func (_m *Channel) ExchangeDeclare(name string, kind string, durable bool, autoD
 }
 
 // NotifyClose provides a mock function with given fields: receiver
-func (_m *Channel) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
+func (_m *Channel) NotifyClose(receiver chan *amqp091.Error) chan *amqp091.Error {
 	ret := _m.Called(receiver)
 
-	var r0 chan *amqp.Error
-	if rf, ok := ret.Get(0).(func(chan *amqp.Error) chan *amqp.Error); ok {
+	var r0 chan *amqp091.Error
+	if rf, ok := ret.Get(0).(func(chan *amqp091.Error) chan *amqp091.Error); ok {
 		r0 = rf(receiver)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(chan *amqp.Error)
+			r0 = ret.Get(0).(chan *amqp091.Error)
 		}
 	}
 
@@ -81,11 +81,11 @@ func (_m *Channel) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error {
 }
 
 // Publish provides a mock function with given fields: exchange, key, mandatory, immediate, msg
-func (_m *Channel) Publish(exchange string, key string, mandatory bool, immediate bool, msg amqp.Publishing) error {
+func (_m *Channel) Publish(exchange string, key string, mandatory bool, immediate bool, msg amqp091.Publishing) error {
 	ret := _m.Called(exchange, key, mandatory, immediate, msg)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, bool, bool, amqp.Publishing) error); ok {
+	if rf, ok := ret.Get(0).(func(string, string, bool, bool, amqp091.Publishing) error); ok {
 		r0 = rf(exchange, key, mandatory, immediate, msg)
 	} else {
 		r0 = ret.Error(0)
@@ -109,11 +109,11 @@ func (_m *Channel) Qos(prefetchCount int, prefetchSize int, global bool) error {
 }
 
 // QueueBind provides a mock function with given fields: name, key, exchange, noWait, args
-func (_m *Channel) QueueBind(name string, key string, exchange string, noWait bool, args amqp.Table) error {
+func (_m *Channel) QueueBind(name string, key string, exchange string, noWait bool, args amqp091.Table) error {
 	ret := _m.Called(name, key, exchange, noWait, args)
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(string, string, string, bool, amqp.Table) error); ok {
+	if rf, ok := ret.Get(0).(func(string, string, string, bool, amqp091.Table) error); ok {
 		r0 = rf(name, key, exchange, noWait, args)
 	} else {
 		r0 = ret.Error(0)
@@ -123,18 +123,18 @@ func (_m *Channel) QueueBind(name string, key string, exchange string, noWait bo
 }
 
 // QueueDeclare provides a mock function with given fields: name, durable, autoDelete, exclusive, noWait, args
-func (_m *Channel) QueueDeclare(name string, durable bool, autoDelete bool, exclusive bool, noWait bool, args amqp.Table) (amqp.Queue, error) {
+func (_m *Channel) QueueDeclare(name string, durable bool, autoDelete bool, exclusive bool, noWait bool, args amqp091.Table) (amqp091.Queue, error) {
 	ret := _m.Called(name, durable, autoDelete, exclusive, noWait, args)
 
-	var r0 amqp.Queue
-	if rf, ok := ret.Get(0).(func(string, bool, bool, bool, bool, amqp.Table) amqp.Queue); ok {
+	var r0 amqp091.Queue
+	if rf, ok := ret.Get(0).(func(string, bool, bool, bool, bool, amqp091.Table) amqp091.Queue); ok {
 		r0 = rf(name, durable, autoDelete, exclusive, noWait, args)
 	} else {
-		r0 = ret.Get(0).(amqp.Queue)
+		r0 = ret.Get(0).(amqp091.Queue)
 	}
 
 	var r1 error
-	if rf, ok := ret.Get(1).(func(string, bool, bool, bool, bool, amqp.Table) error); ok {
+	if rf, ok := ret.Get(1).(func(string, bool, bool, bool, bool, amqp091.Table) error); ok {
 		r1 = rf(name, durable, autoDelete, exclusive, noWait, args)
 	} else {
 		r1 = ret.Error(1)

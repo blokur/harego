@@ -1,7 +1,7 @@
 package mocks
 
 import (
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // ChannelSimple mocks the Channel type.

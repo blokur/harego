@@ -8,7 +8,7 @@ import (
 	"github.com/blokur/harego/internal"
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // Client is a concurrent safe construct for publishing a message to exchanges,

@@ -1,6 +1,6 @@
 # Harego
 
-High-level library on top of [amqp][amqp].
+High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 
 [![Build Status](https://travis-ci.com/blokur/harego.svg?token=TM5LRGpEAwKms8UULFDi&branch=master)](https://travis-ci.com/blokur/harego)
 

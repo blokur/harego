@@ -1,6 +1,6 @@
 package harego
 
-import "github.com/streadway/amqp"
+import amqp "github.com/rabbitmq/amqp091-go"
 
 //go:generate stringer -type=AckType,DeliveryMode -output=constants_string.go
 

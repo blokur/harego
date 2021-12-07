@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/blokur/harego"
-	"github.com/streadway/amqp"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // ExampleHandlerFunc_ack instructs the consumer to drop the message

@@ -7,8 +7,8 @@ require (
 	github.com/google/go-cmp v0.5.6
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/pkg/errors v0.9.1
+	github.com/rabbitmq/amqp091-go v1.2.0
 	github.com/spf13/viper v1.9.0
-	github.com/streadway/amqp v1.0.0
 	github.com/stretchr/testify v1.7.0
 	github.com/testcontainers/testcontainers-go v0.12.0
 )
