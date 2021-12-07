@@ -17,6 +17,7 @@ before_install:
   - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.38.0
 
 before_script:
+  - make lint
   - make integration_deps
 
 go:

@@ -74,11 +74,15 @@ dependencies: ## Install dependencies requried for development operations.
 	@go get -u github.com/git-chglog/git-chglog/cmd/git-chglog
 	@go get github.com/stretchr/testify/mock
 	@go get github.com/vektra/mockery/.../
-	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.38.0
+	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
 	@go get -u golang.org/x/tools/cmd/stringer
 	@go get -u ./...
 	@go mod tidy
 
+.PHONY: lint
+lint:
+	go fmt ./...
+	golangci-lint run ./...
 
 .PHONY: mocks
 mocks: ## Generate mocks in all packages.
