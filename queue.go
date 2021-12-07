@@ -206,7 +206,7 @@ func (c *Client) Consume(ctx context.Context, handler HandlerFunc) error {
 		}()
 	}
 	wg.Wait()
-	return c.ctx.Err()
+	return c.ctx.Err() //nolint:wrapcheck // Okay here.
 }
 
 func (c *Client) consumeLoop(handler HandlerFunc) {
@@ -281,7 +281,7 @@ func (c *Client) Close() error {
 		}
 		c.conn = nil
 	}
-	return err.ErrorOrNil()
+	return err.ErrorOrNil() //nolint:wrapcheck // Okay here.
 }
 
 func (c *Client) validate() error {

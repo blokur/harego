@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"os"
@@ -74,13 +73,13 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 	}
 	if vh != "" {
 		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
-		req, err := http.NewRequest("PUT", adminURL, nil)
+		req, err := http.NewRequest("PUT", adminURL, http.NoBody)
 		require.NoError(t, err)
 		req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
 		resp, err := http.DefaultClient.Do(req)
 		if resp != nil && resp.Body != nil {
 			defer func() {
-				io.Copy(ioutil.Discard, resp.Body)
+				io.Copy(io.Discard, resp.Body)
 				resp.Body.Close()
 			}()
 		}
@@ -116,13 +115,13 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 
 		for _, url := range urls {
 			func() {
-				req, err := http.NewRequest("DELETE", url, nil)
+				req, err := http.NewRequest("DELETE", url, http.NoBody)
 				require.NoError(t, err)
 				req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
 				resp, err := http.DefaultClient.Do(req)
 				if resp != nil && resp.Body != nil {
 					defer func() {
-						io.Copy(ioutil.Discard, resp.Body)
+						io.Copy(io.Discard, resp.Body)
 						resp.Body.Close()
 					}()
 				}

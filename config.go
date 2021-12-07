@@ -12,7 +12,7 @@ type rabbitWrapper struct {
 
 // Channel returns the underlying channel.
 func (r *rabbitWrapper) Channel() (Channel, error) {
-	return r.Connection.Channel()
+	return r.Connection.Channel() //nolint:wrapcheck // Okay here.
 }
 
 // A Connector should return a live connection. It will be called during the
