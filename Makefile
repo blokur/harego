@@ -71,7 +71,6 @@ reset_docker: ## Reset containers and delete their data.
 .PHONY: dependencies
 dependencies: ## Install dependencies requried for development operations.
 	@go get -u github.com/cespare/reflex
-	@go get -u github.com/git-chglog/git-chglog/cmd/git-chglog
 	@go get github.com/stretchr/testify/mock
 	@go get github.com/vektra/mockery/.../
 	@go get github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
@@ -88,24 +87,10 @@ lint:
 mocks: ## Generate mocks in all packages.
 	@go generate ./...
 
-
-.PHONY: changelog
-changelog: ## Update the changelog.
-	@git-chglog > CHANGELOG.md
-	@echo "Changelog has been updated."
-
-
-.PHONY: changelog_release
-changelog_release: ## Update the changelog with a release tag.
-	@git-chglog --next-tag $(tag) > CHANGELOG.md
-	@echo "Changelog has been updated."
-
-
 .PHONY: clean
 clean: ## Clean test caches and tidy up modules.
 	@go clean -testcache
 	@go mod tidy
-
 
 .PHONY: coverage
 coverage: ## Show the test coverage on browser.
