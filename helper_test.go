@@ -14,6 +14,7 @@ import (
 
 	"github.com/blokur/harego"
 	"github.com/blokur/harego/internal"
+	"github.com/blokur/testament"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -31,19 +32,10 @@ func init() {
 	internal.RabbitMQVirtual = viper.GetString(internal.RabbitMQVirtualName)
 }
 
-func randomString(count int) string {
-	const runes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	b := make([]byte, count)
-	for i := range b {
-		b[i] = runes[rand.Intn(len(runes))]
-	}
-	return string(b)
-}
-
 func randomBody(lines int) string {
 	body := make([]string, lines)
 	for i := range body {
-		body[i] = randomString(rand.Intn(100) + 10)
+		body[i] = testament.RandomString(rand.Intn(100) + 10)
 	}
 	return strings.Join(body, "\n")
 }
@@ -51,8 +43,8 @@ func randomBody(lines int) string {
 // getClient creates a client without a queue if the queueName is empty.
 func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) *harego.Client {
 	t.Helper()
-	exchange := "test." + randomString(20)
-	vh := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	vh := "test." + testament.RandomString(20)
 	return getNamedClient(t, vh, exchange, queueName, conf...)
 }
 

@@ -103,10 +103,10 @@ func testIntegClientConsumeConcurrent(t *testing.T) {
 
 func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 	t.Parallel()
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
-	routingKey := "test." + randomString(20)
-	vh := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
+	routingKey := "test." + testament.RandomString(20)
+	vh := "test." + testament.RandomString(20)
 
 	pub := getNamedClient(t, vh, exchange, "",
 		harego.Workers(workers),
@@ -173,9 +173,9 @@ func testIntegClientConsumeConcurrentDo(t *testing.T, total, workers int) {
 
 func testIntegClientConsumeNack(t *testing.T) {
 	t.Parallel()
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
-	vh := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
+	vh := "test." + testament.RandomString(20)
 
 	pub := getNamedClient(t, vh, exchange, "")
 	defer pub.Close()
@@ -235,9 +235,9 @@ func testIntegClientConsumeNack(t *testing.T) {
 
 func testIntegClientConsumeReject(t *testing.T) {
 	t.Parallel()
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
-	vh := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
+	vh := "test." + testament.RandomString(20)
 
 	pub := getNamedClient(t, vh, exchange, "")
 	defer pub.Close()
@@ -280,9 +280,9 @@ func testIntegClientConsumeReject(t *testing.T) {
 
 func testIntegClientConsumeRequeue(t *testing.T) {
 	t.Parallel()
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
-	vh := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
+	vh := "test." + testament.RandomString(20)
 	pub := getNamedClient(t, vh, exchange, "")
 	defer pub.Close()
 	cons := getNamedClient(t, vh, exchange, queueName)
@@ -331,11 +331,11 @@ func testIntegClientConsumeRequeue(t *testing.T) {
 
 func testIntegClientSeparatedConsumePublish(t *testing.T) {
 	t.Parallel()
-	vh := "test." + randomString(20)
-	exchange1 := "test." + randomString(20)
-	exchange2 := "test." + randomString(20)
-	queueName1 := "test." + randomString(20)
-	queueName2 := "test." + randomString(20)
+	vh := "test." + testament.RandomString(20)
+	exchange1 := "test." + testament.RandomString(20)
+	exchange2 := "test." + testament.RandomString(20)
+	queueName1 := "test." + testament.RandomString(20)
+	queueName2 := "test." + testament.RandomString(20)
 
 	pub1 := getNamedClient(t, vh, exchange1, "")
 	defer pub1.Close()
@@ -411,10 +411,10 @@ func testIntegClientSeparatedConsumePublish(t *testing.T) {
 
 func testIntegClientUseSameQueue(t *testing.T) {
 	t.Parallel()
-	vh := "test." + randomString(20)
-	exchange1 := "test." + randomString(20)
-	exchange2 := "test." + randomString(20)
-	queueName := "test." + randomString(20)
+	vh := "test." + testament.RandomString(20)
+	exchange1 := "test." + testament.RandomString(20)
+	exchange2 := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
 
 	pub1 := getNamedClient(t, vh, exchange1, queueName)
 	defer pub1.Close()
@@ -472,10 +472,10 @@ func testIntegClientUseSameQueue(t *testing.T) {
 
 func testIntegClientPublishWorkers(t *testing.T) {
 	t.Parallel()
-	vh := "test." + randomString(20)
-	exchange1 := "test." + randomString(20)
-	exchange2 := "test." + randomString(20)
-	queueName := "test." + randomString(20)
+	vh := "test." + testament.RandomString(20)
+	exchange1 := "test." + testament.RandomString(20)
+	exchange2 := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
 
 	pub := getNamedClient(t, vh, exchange1, queueName,
 		harego.Workers(10),
@@ -534,8 +534,8 @@ func testIntegClientReconnect(t *testing.T) {
 
 func testIntegClientReconnectPublish(t *testing.T) {
 	t.Parallel()
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
 	container, addr := getContainer(t)
 	pub, err := harego.NewClient(harego.URLConnector(addr),
 		harego.ExchangeName(exchange),
@@ -596,8 +596,8 @@ func testIntegClientReconnectConsume(t *testing.T) {
 	var (
 		total     = 10
 		wg        sync.WaitGroup
-		exchange  = "test." + randomString(20)
-		queueName = "test." + randomString(20)
+		exchange  = "test." + testament.RandomString(20)
+		queueName = "test." + testament.RandomString(20)
 	)
 
 	container, addr := getContainer(t)
@@ -620,7 +620,7 @@ func testIntegClientReconnectConsume(t *testing.T) {
 
 	for i := 0; i < total; i++ {
 		err := pub.Publish(&amqp.Publishing{
-			Body: []byte(randomString(10)),
+			Body: []byte(testament.RandomString(10)),
 		})
 		require.NoError(t, err)
 	}
@@ -660,9 +660,9 @@ func testIntegClientReconnectConsume(t *testing.T) {
 
 func testIntegClientClose(t *testing.T) {
 	t.Parallel()
-	vh := "test." + randomString(20)
-	exchange := "test." + randomString(20)
-	queueName := "test." + randomString(20)
+	vh := "test." + testament.RandomString(20)
+	exchange := "test." + testament.RandomString(20)
+	queueName := "test." + testament.RandomString(20)
 
 	total := 10
 	broker := getNamedClient(t, vh, exchange, queueName, harego.Workers(total))
@@ -674,7 +674,7 @@ func testIntegClientClose(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			err := broker.Publish(&amqp.Publishing{
-				Body: []byte(randomString(20)),
+				Body: []byte(testament.RandomString(20)),
 			})
 			if err == nil {
 				return

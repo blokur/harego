@@ -329,8 +329,7 @@ func (c *Client) registerReconnect(ctx context.Context) {
 			if c.closed {
 				return
 			}
-			c.mu.Lock()
-			defer c.mu.Unlock()
+
 			if c.channel != nil {
 				c.channel.Close()
 				c.channel = nil
