@@ -61,15 +61,16 @@ linters:
   disable-all: true
   fast: true
   enable:
-    - asciicheck
     - bodyclose
     - deadcode
-    - dogsled
     - depguard
+    - dogsled
     - dupl
+    - durationcheck
     - errcheck
     - errorlint
     - exportloopref
+    - forcetypeassert
     - gocognit
     - goconst
     - gocritic
@@ -80,20 +81,26 @@ linters:
     - gosec
     - gosimple
     - govet
+    - ineffassign
     - misspell
     - nakedret
     - nestif
+    - nilerr
     - prealloc
     - revive
     - rowserrcheck
+    - sqlclosecheck
     - staticcheck
+    - structcheck
     - stylecheck
+    - tparallel
+    - typecheck
     - unconvert
     - unparam
     - unused
+    - varcheck
+    - wastedassign
     - whitespace
-    - wrapcheck
-    - tparallel
 
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
