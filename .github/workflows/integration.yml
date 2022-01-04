@@ -1,0 +1,55 @@
+name: Continues Integration
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches:
+      - master
+      - feature/*
+      - bugfix/*
+      - refactor/*
+      - chore/*
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.17
+
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - uses: satackey/action-docker-layer-caching@v0.0.11
+        continue-on-error: true
+
+      - name: Install Dependencies
+        run: make integration_deps
+
+      - name: Running Tests
+        run: make ci_tests
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v2
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v2
+        with:
+          version: v1.43.0
+          args: --timeout 5m0s

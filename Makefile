@@ -32,8 +32,8 @@ integration_test: ## Run integration in watch mode. You can set: [run, timeout, 
 
 
 .PHONY: ci_tests
-ci_tests: lint ## Run tests for CI.
-	go test -trimpath --timeout=10m -failfast -v -race -count=5 -tags=integration -covermode=atomic -coverprofile=coverage.out ./...
+ci_tests: ## Run tests for CI.
+	go test -trimpath --timeout=10m -failfast -v -tags=integration -covermode=atomic -coverprofile=coverage.out ./...
 
 
 .PHONY: integration_deps
@@ -41,8 +41,8 @@ integration_deps: ## Install integration test databases. It removes every existi
 	@-docker pull $(rabbitmq_image)
 	@-docker network create harego
 	@docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --user rabbitmq --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image) rabbitmq-server --erlang-cookie=harego
-	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
-	@docker exec -it $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
+	@docker exec $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
+	@docker exec $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
 	@echo "RabbitMQ has been setup"
 
 
@@ -50,7 +50,7 @@ integration_deps: ## Install integration test databases. It removes every existi
 start_test_container: ## Start test containers.
 	@echo "Starting test containers"
 	@-docker start $(rabbitmq_container)
-	@docker exec -it $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid > /dev/null
+	@docker exec $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid > /dev/null
 	@echo "All test containers are ready"
 
 
