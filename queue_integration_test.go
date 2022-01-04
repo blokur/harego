@@ -534,8 +534,13 @@ func testIntegClientReconnect(t *testing.T) {
 
 func testIntegClientReconnectPublish(t *testing.T) {
 	t.Parallel()
-	exchange := "test." + testament.RandomString(20)
-	queueName := "test." + testament.RandomString(20)
+	var (
+		total     = 200
+		wg        sync.WaitGroup
+		exchange  = "test." + testament.RandomString(20)
+		queueName = "test." + testament.RandomString(20)
+	)
+
 	container, addr := getContainer(t)
 	pub, err := harego.NewClient(harego.URLConnector(addr),
 		harego.ExchangeName(exchange),
@@ -549,52 +554,78 @@ func testIntegClientReconnectPublish(t *testing.T) {
 	require.NoError(t, err)
 	defer cons.Close()
 
-	var (
-		want  []string
-		mu    sync.RWMutex
-		got   []string
-		total = 1000
-	)
-	assert.Eventually(t, func() bool {
-		for i := 0; i < total; i++ {
-			msg := fmt.Sprintf("Message: [i:%d]", i)
-			want = append(want, msg)
-			err := pub.Publish(&amqp.Publishing{
-				Body: []byte(msg),
-			})
-			require.NoError(t, err)
-			if i%(total/5) == 0 {
-				restartRabbitMQ(t, container)
-				time.Sleep(time.Second)
-			}
-		}
-		return true
-	}, time.Minute, 10*time.Millisecond)
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go func() {
-		err := cons.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
-			mu.Lock()
-			defer mu.Unlock()
-			got = append(got, string(msg.Body))
-			return harego.AckTypeAck, 0
-		})
-		testament.AssertInError(t, err, context.Canceled)
-	}()
-	assert.Eventually(t, func() bool {
-		mu.RLock()
-		defer mu.RUnlock()
-		return len(want) == len(got)
-	}, time.Minute, 10*time.Millisecond)
 
-	assert.ElementsMatch(t, want, got)
+	// we want the goroutine to wait for us before publishing.
+	restart := make(chan chan struct{})
+	go func() {
+		for {
+			select {
+			case ch := <-restart:
+				restartRabbitMQ(t, container)
+				close(ch)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	wg.Add(1)
+	var calls int32
+	go func() {
+		defer wg.Done()
+		require.NotPanics(t, func() {
+			err := cons.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
+				g := atomic.AddInt32(&calls, 1)
+				if g >= int32(total) {
+					cancel()
+				}
+				return harego.AckTypeAck, 0
+			})
+			testament.AssertInError(t, err, context.Canceled)
+		})
+	}()
+
+	restarted := false
+
+	for i := 0; i < total; i++ {
+		if restarted {
+			time.Sleep(time.Second / 5)
+			pub, err = harego.NewClient(harego.URLConnector(addr),
+				harego.ExchangeName(exchange),
+			)
+			if err == nil {
+				restarted = false
+			}
+			i--
+			continue
+		}
+		err := pub.Publish(&amqp.Publishing{
+			Body: []byte(testament.RandomString(10)),
+		})
+		if err != nil {
+			i--
+		}
+		if i > 0 && i%(total/5) == 0 {
+			restarted = true
+			msg := make(chan struct{})
+			restart <- msg
+			<-msg
+		}
+	}
+
+	assert.Eventually(t, func() bool {
+		wg.Wait()
+		return true
+	}, time.Minute, 50*time.Millisecond)
+
+	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
 }
 
 func testIntegClientReconnectConsume(t *testing.T) {
 	t.Parallel()
 	var (
-		total     = 10
+		total     = 200
 		wg        sync.WaitGroup
 		exchange  = "test." + testament.RandomString(20)
 		queueName = "test." + testament.RandomString(20)
@@ -603,14 +634,12 @@ func testIntegClientReconnectConsume(t *testing.T) {
 	container, addr := getContainer(t)
 	pub, err := harego.NewClient(harego.URLConnector(addr),
 		harego.ExchangeName(exchange),
-		// harego.Workers(10),
 	)
 	require.NoError(t, err)
 
 	cons, err := harego.NewClient(harego.URLConnector(addr),
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
-		// harego.Workers(3),
 	)
 	require.NoError(t, err)
 	defer cons.Close()
