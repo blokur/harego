@@ -6,7 +6,6 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 
 ![Harego](https://media.giphy.com/media/uNNsPzWVFzfuE/giphy.gif)
 
-
 1. [Description](#description)
    - [Note](#note)
 2. [Usage](#usage)
@@ -25,12 +24,12 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 
 ## Description
 
-A `harego.Client` is a concurrent safe queue manager for RabbitMQ, and a
-high-level implementation on top of [amqp](github.com/streadway/amqp) library.
-The Client creates one or more workers for publishing/consuming messages. The
-default values are chosen to make the Client a durable queue working with the
-`default` exchange and `topic` kind. Client can be configure by passing
-provided `ConfigFunc` functions to NewClient() constructor.
+A `harego.Client` is a concurrent safe queue manager for RabbitMQ, and
+a high-level implementation on top of [amqp](github.com/rabbitmq/amqp091-go)
+library. The Client creates one or more workers for publishing/consuming
+messages. The default values are chosen to make the Client a durable queue
+working with the `default` exchange and `topic` kind. Client can be configure
+by passing provided `ConfigFunc` functions to NewClient() constructor.
 
 The `Consume()` method will call the provided `HandlerFunc` with the next
 available message on the next available worker. The return value of the
@@ -216,4 +215,4 @@ make integration_deps
 ```
 
 [reflex]: https://github.com/cespare/reflex
-[amqp]: github.com/streadway/amqp
+[amqp]: https://github.com/rabbitmq/amqp091-go
