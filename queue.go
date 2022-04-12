@@ -14,7 +14,7 @@ import (
 // Client is a concurrent safe construct for publishing a message to exchanges,
 // and consuming messages from queues. It creates multiple workers for safe
 // communication. Zero value is not usable.
-// nolint:maligned // most likely not an issue, but cleaner this way.
+// nolint:govet // most likely not an issue, but cleaner this way.
 type Client struct {
 	connector    Connector
 	workers      int
@@ -88,6 +88,7 @@ func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 			return nil, err
 		}
 	}
+
 	if c.prefetchCount < c.workers {
 		c.prefetchCount = c.workers
 	}
@@ -95,14 +96,17 @@ func NewClient(connector Connector, conf ...ConfigFunc) (*Client, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "validating configuration")
 	}
+
 	c.conn, err = c.connector()
 	if err != nil {
 		return nil, errors.Wrap(err, "getting a connection to the broker")
 	}
+
 	err = c.setupChannel()
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up a channel")
 	}
+
 	err = c.setupQueue()
 	if err != nil {
 		return nil, errors.Wrap(err, "setting up a queue")
@@ -213,7 +217,7 @@ func (c *Client) consumeLoop(handler HandlerFunc) {
 	for msg := range c.consumeCh {
 		msg := msg
 		a, delay := handler(&msg)
-		// nolint:errcheck // will be checked once provided a way to log errors.
+		// nolint:errcheck,gosec // will be checked once provided a way to log errors.
 		switch a {
 		case AckTypeAck:
 			time.Sleep(delay)
@@ -320,7 +324,7 @@ func (c *Client) registerReconnect(ctx context.Context) {
 	}
 	c.mu.RUnlock()
 	ch := c.channel.NotifyClose(make(chan *amqp.Error))
-	// nolint:errcheck // will be checked once provided a way to log errors.
+	// nolint:errcheck,gosec // will be checked once provided a way to log errors.
 	go func() {
 		select {
 		case <-ctx.Done():
