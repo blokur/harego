@@ -18,7 +18,6 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
    - [Prerequisite](#prerequisite)
    - [Running Tests](#running_tests)
    - [Make Examples](#make_examples)
-   - [Changelog](#changelog)
    - [Mocks](#mocks)
    - [RabbitMQ](#rabbitmq)
 
@@ -180,22 +179,6 @@ make unittest flags="-race -count=2"
 ```
 
 Please see the Makefile for more targets.
-
-### Changelog
-
-You need to update the changelogs file before each release. In order to update
-the changelogs file run the following:
-
-```bash
-make changelog
-```
-
-When you are ready to make a commitment and tag the next release, use this
-target and pass in the next tag:
-
-```bash
-make changelog_release tag=v1.0.1
-```
 
 ### Mocks
 
