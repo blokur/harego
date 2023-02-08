@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arsham/retry"
 	"github.com/google/go-cmp/cmp"
 	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -142,21 +143,34 @@ func testIntegPublisherReconnect(t *testing.T) {
 		wg        sync.WaitGroup
 		exchange  = "test." + testament.RandomString(20)
 		queueName = "test." + testament.RandomString(20)
+		pub       *harego.Publisher
+		cons      *harego.Consumer
+		r         = &retry.Retry{
+			Delay:    500 * time.Millisecond,
+			Attempts: 10,
+		}
 	)
 
 	container, addr := getContainer(t)
-	pub, err := harego.NewPublisher(harego.URLConnector(addr),
-		harego.ExchangeName(exchange),
-		harego.RetryDelay(500*time.Millisecond),
-	)
+	err := r.Do(func() error {
+		var err error
+		pub, err = harego.NewPublisher(harego.URLConnector(addr),
+			harego.ExchangeName(exchange),
+			harego.RetryDelay(100*time.Millisecond),
+		)
+		return err
+	})
 	require.NoError(t, err)
-	defer pub.Close()
 
-	cons, err := harego.NewConsumer(harego.URLConnector(addr),
-		harego.ExchangeName(exchange),
-		harego.QueueName(queueName),
-		harego.RetryDelay(100*time.Millisecond),
-	)
+	err = r.Do(func() error {
+		var err error
+		cons, err = harego.NewConsumer(harego.URLConnector(addr),
+			harego.ExchangeName(exchange),
+			harego.QueueName(queueName),
+			harego.RetryDelay(500*time.Millisecond),
+		)
+		return err
+	})
 	require.NoError(t, err)
 	defer cons.Close()
 

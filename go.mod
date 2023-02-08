@@ -3,6 +3,7 @@ module github.com/blokur/harego/v2
 go 1.20
 
 require (
+	github.com/arsham/retry v0.5.2
 	github.com/blokur/testament v0.3.1
 	github.com/google/go-cmp v0.5.9
 	github.com/hashicorp/go-multierror v1.1.1

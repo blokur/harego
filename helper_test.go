@@ -131,7 +131,7 @@ func getContainer(t *testing.T) (container testcontainers.Container, addr string
 	t.Helper()
 	ctx := context.Background()
 	req := testcontainers.ContainerRequest{
-		Image:        "rabbitmq:3.8.19-management-alpine",
+		Image:        "rabbitmq:3-management-alpine",
 		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
 		WaitingFor:   wait.ForListeningPort("5672/tcp"),
 	}

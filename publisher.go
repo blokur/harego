@@ -230,10 +230,12 @@ func (p *Publisher) registerReconnect(ch Channel) {
 
 			p.logErr(ch.Close())
 
+			p.mu.Lock()
 			if p.conn != nil {
 				p.logErr(p.conn.Close())
 				p.conn = nil
 			}
+			p.mu.Unlock()
 			ch := p.keepConnecting()
 			if ch == nil {
 				return
@@ -246,9 +248,12 @@ func (p *Publisher) registerReconnect(ch Channel) {
 func (p *Publisher) keepConnecting() Channel {
 	for {
 		time.Sleep(p.retryDelay)
+		p.mu.RLock()
 		if p.closed {
+			p.mu.RUnlock()
 			return nil
 		}
+		p.mu.RUnlock()
 		err := p.dial()
 		if err != nil {
 			continue

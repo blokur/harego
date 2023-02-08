@@ -267,16 +267,21 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ch:
+			c.mu.RLock()
 			if c.closed {
+				c.mu.RUnlock()
 				return
 			}
+			c.mu.RUnlock()
 			if c.channel != nil {
 				c.logErr(c.channel.Close())
 				c.channel = nil
 			}
 			if c.conn != nil {
 				c.logErr(c.conn.Close())
+				c.mu.Lock()
 				c.conn = nil
+				c.mu.Unlock()
 			}
 			c.keepConnecting()
 			go c.registerReconnect(ctx)
@@ -296,9 +301,12 @@ func (c *Consumer) keepConnecting() {
 	var err error
 	for {
 		time.Sleep(c.retryDelay)
+		c.mu.RLock()
 		if c.closed {
+			c.mu.RUnlock()
 			return
 		}
+		c.mu.RUnlock()
 		err = c.dial()
 		if err != nil {
 			continue
