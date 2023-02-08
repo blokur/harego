@@ -12,19 +12,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blokur/harego"
-	"github.com/blokur/harego/internal"
 	"github.com/blokur/testament"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/internal"
 )
 
 func init() {
 	viper.AutomaticEnv()
-	rand.Seed(time.Now().UnixNano())
 
 	internal.RabbitMQAddr = viper.GetString(internal.RabbitMQAddrName)
 	internal.RabbitMQUser = viper.GetString(internal.RabbitMQUserName)
@@ -40,21 +40,18 @@ func randomBody(lines int) string {
 	return strings.Join(body, "\n")
 }
 
-// getClient creates a client without a queue if the queueName is empty.
-func getClient(t *testing.T, queueName string, conf ...harego.ConfigFunc) *harego.Client {
-	t.Helper()
-	exchange := "test." + testament.RandomString(20)
-	vh := "test." + testament.RandomString(20)
-	return getNamedClient(t, vh, exchange, queueName, conf...)
-}
-
-// getNamedClient creates a client without a queue if the queueName is empty.
-func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) *harego.Client {
+// getConsumerPublisher returns a pair of consumer and publisher. What
+// publisher sends to the exchange, the consumer will receive. If the queueName
+// is empty, a random queueName is picked.
+func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) (*harego.Consumer, *harego.Publisher) {
 	t.Helper()
 	var (
 		adminURL string
 		err      error
 	)
+	if queueName == "" {
+		queueName = testament.RandomLowerString(20)
+	}
 	apiAddress := strings.Split(internal.RabbitMQAddr, ":")[0]
 	adminPort := 15672
 	if v, ok := os.LookupEnv("RABBITMQ_ADMIN_PORT"); ok {
@@ -65,7 +62,7 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 	}
 	if vh != "" {
 		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
-		req, err := http.NewRequest("PUT", adminURL, http.NoBody)
+		req, err := http.NewRequestWithContext(context.Background(), "PUT", adminURL, http.NoBody)
 		require.NoError(t, err)
 		req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
 		resp, err := http.DefaultClient.Do(req)
@@ -83,23 +80,27 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
 	}, conf...)
-	e, err := harego.NewClient(harego.URLConnector(url),
+	pub, err := harego.NewPublisher(harego.URLConnector(url),
+		conf...,
+	)
+	require.NoError(t, err)
+	cons, err := harego.NewConsumer(harego.URLConnector(url),
 		conf...,
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
+		pub.Close()
+		cons.Close()
 		assert.Eventually(t, func() bool {
-			e.Close()
+			cons.Close()
 			return true
 		}, 2*time.Second, 10*time.Millisecond)
 		urls := []string{
 			fmt.Sprintf("http://%s:%d/api/exchanges/%s", apiAddress, adminPort, exchange),
 		}
-		if queueName != "" {
-			urls = append(urls,
-				fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
-			)
-		}
+		urls = append(urls,
+			fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
+		)
 
 		if vh != "" {
 			urls = append(urls, adminURL)
@@ -107,7 +108,7 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 
 		for _, url := range urls {
 			func() {
-				req, err := http.NewRequest("DELETE", url, http.NoBody)
+				req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, http.NoBody)
 				require.NoError(t, err)
 				req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
 				resp, err := http.DefaultClient.Do(req)
@@ -121,7 +122,7 @@ func getNamedClient(t *testing.T, vh, exchange, queueName string, conf ...harego
 			}()
 		}
 	})
-	return e
+	return cons, pub
 }
 
 // getContainer returns a new container running rabbimq that is ready for
@@ -157,7 +158,7 @@ func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	_, err := container.Exec(ctx, []string{
+	_, _, err := container.Exec(ctx, []string{
 		"rabbitmqctl",
 		"stop_app",
 	})

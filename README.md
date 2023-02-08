@@ -9,7 +9,8 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 1. [Description](#description)
    - [Note](#note)
 2. [Usage](#usage)
-   - [NewClient](#new-client)
+   - [NewConsumer](#newconsume)
+   - [NewPublisher](#newpublisher)
    - [Publish](#publish)
    - [Consume](#consume)
    - [Delays](#delays)
@@ -23,12 +24,14 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 
 ## Description
 
-A `harego.Client` is a concurrent safe queue manager for RabbitMQ, and
-a high-level implementation on top of [amqp](github.com/rabbitmq/amqp091-go)
-library. The Client creates one or more workers for publishing/consuming
-messages. The default values are chosen to make the Client a durable queue
-working with the `default` exchange and `topic` kind. Client can be configure
-by passing provided `ConfigFunc` functions to NewClient() constructor.
+A `harego.Consumer`/`harego.Publisher` is a concurrent safe queue manager for
+RabbitMQ, and a high-level implementation on top of
+[amqp](github.com/rabbitmq/amqp091-go) library. A Consumer/Publisher creates
+one or more workers for publishing/consuming messages. The default values are
+chosen to make the Consumer/Publisher a durable queue working with the
+`default` exchange and `topic` kind. Consumer/Publisher can be configure by
+passing provided `ConfigFunc` functions to NewConsumer/NewPublisher
+constructors.
 
 The `Consume()` method will call the provided `HandlerFunc` with the next
 available message on the next available worker. The return value of the
@@ -49,7 +52,7 @@ release.
 
 ## Usage
 
-### NewClient
+### NewConsumer
 
 The only requirement for the NewClient function is a Connector to connect to the
 broker when needed:
@@ -70,11 +73,11 @@ In this setup the message is sent to the `myexchange` exchange:
 
 ```go
 client, err := harego.NewClient(harego.URLConnector(address),
-    harego.ExchangeName("myexchange"),
+	harego.ExchangeName("myexchange"),
 )
 // handle the error.
 err = client.Publish(&amqp.Publishing{
-    Body: []byte(msg),
+	Body: []byte(msg),
 })
 // handle the error.
 ```
@@ -86,12 +89,12 @@ is called for each message that are read from this queue:
 
 ```go
 client, err := harego.NewClient(harego.URLConnector(address),
-    harego.ExchangeName("myexchange"),
-    harego.QueueName("myqueue"),
+	harego.ExchangeName("myexchange"),
+	harego.QueueName("myqueue"),
 )
 // handle the error.
 err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
-   return harego.AckTypeAck, 0
+	return harego.AckTypeAck, 0
 })
 // handle the error.
 ```
@@ -101,13 +104,13 @@ multiple messages:
 
 ```go
 client, err := harego.NewClient(harego.URLConnector(address),
-    harego.ExchangeName("myexchange"),
-    harego.QueueName("myqueue"),
-    harego.Workers(20),
+	harego.ExchangeName("myexchange"),
+	harego.QueueName("myqueue"),
+	harego.Workers(20),
 )
 // handle the error.
 err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
-   return harego.AckTypeAck, 0
+	return harego.AckTypeAck, 0
 })
 // handle the error.
 ```

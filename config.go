@@ -1,6 +1,9 @@
 package harego
 
 import (
+	"time"
+
+	"github.com/blokur/harego/v2/internal"
 	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -41,63 +44,133 @@ func AMQPConnector(r *amqp.Connection) Connector {
 	}
 }
 
-// ConfigFunc is a function for setting up the Client. A config function returns
-// an error if the client is already started. You should not use this type
-// outside of the NewClient function call.
-type ConfigFunc func(*Client) error
+// nolint:govet // most likely not an issue, but cleaner this way.
+type config struct {
+	workers      int
+	consumerName string
+	retryDelay   time.Duration
+	logger       logger
+
+	// queue properties.
+	queueName  string
+	routingKey string
+	exclusive  bool
+	queueArgs  amqp.Table
+
+	// exchange properties.
+	exchName   string
+	exchType   ExchangeType
+	durable    bool
+	autoDelete bool
+	autoAck    bool
+	internal   bool
+	noWait     bool
+
+	// message properties.
+	prefetchCount int
+	prefetchSize  int
+	deliveryMode  DeliveryMode
+
+	chBuff int
+}
+
+func defaultConfig() *config {
+	return &config{
+		exchName:     "default",
+		workers:      1,
+		chBuff:       10,
+		exchType:     ExchangeTypeTopic,
+		deliveryMode: DeliveryModePersistent,
+		durable:      true,
+		consumerName: internal.GetRandomName(),
+		retryDelay:   100 * time.Millisecond,
+		logger:       &nullLogger{},
+	}
+}
+
+func (c *config) consumer() *Consumer {
+	return &Consumer{
+		workers:       c.workers,
+		consumerName:  c.consumerName,
+		retryDelay:    c.retryDelay,
+		queueName:     c.queueName,
+		routingKey:    c.routingKey,
+		exclusive:     c.exclusive,
+		queueArgs:     c.queueArgs,
+		exchName:      c.exchName,
+		exchType:      c.exchType,
+		durable:       c.durable,
+		autoDelete:    c.autoDelete,
+		autoAck:       c.autoAck,
+		internal:      c.internal,
+		noWait:        c.noWait,
+		prefetchCount: c.prefetchCount,
+		prefetchSize:  c.prefetchSize,
+		deliveryMode:  c.deliveryMode,
+		chBuff:        c.chBuff,
+		logger:        c.logger,
+	}
+}
+
+func (c *config) publisher() *Publisher {
+	return &Publisher{
+		workers:       c.workers,
+		consumerName:  c.consumerName,
+		retryDelay:    c.retryDelay,
+		queueName:     c.queueName,
+		routingKey:    c.routingKey,
+		exclusive:     c.exclusive,
+		queueArgs:     c.queueArgs,
+		exchName:      c.exchName,
+		exchType:      c.exchType,
+		durable:       c.durable,
+		autoDelete:    c.autoDelete,
+		internal:      c.internal,
+		noWait:        c.noWait,
+		prefetchCount: c.prefetchCount,
+		prefetchSize:  c.prefetchSize,
+		deliveryMode:  c.deliveryMode,
+		chBuff:        c.chBuff,
+		logger:        c.logger,
+	}
+}
+
+// ConfigFunc is a function for setting up the Client. You should not use this
+// type outside of the NewConsumer or NewPublisher function calls.
+type ConfigFunc func(*config)
 
 // QueueName sets the queue name.
 func QueueName(name string) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.queueName = name
-		return nil
 	}
 }
 
 // QueueArgs sets the args possed to the QueueDeclare method.
 func QueueArgs(args amqp.Table) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.queueArgs = args
-		return nil
 	}
 }
 
 // RoutingKey sets the routing key of the queue.
 func RoutingKey(key string) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.routingKey = key
-		return nil
 	}
 }
 
 // Workers sets the worker count for consuming messages.
 func Workers(n int) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.workers = n
-		return nil
 	}
 }
 
 // WithDeliveryMode sets the default delivery mode of messages.
 func WithDeliveryMode(mode DeliveryMode) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.deliveryMode = mode
-		return nil
 	}
 }
 
@@ -107,12 +180,8 @@ func WithDeliveryMode(mode DeliveryMode) ConfigFunc {
 // ignores this option when consumers are started with noAck because no
 // acknowledgments are expected or sent.
 func PrefetchCount(i int) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.prefetchCount = i
-		return nil
 	}
 }
 
@@ -120,88 +189,56 @@ func PrefetchCount(i int) ConfigFunc {
 // the server will try to keep at least that many bytes of deliveries flushed
 // to the network before receiving acknowledgments from the consumers.
 func PrefetchSize(i int) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.prefetchSize = i
-		return nil
 	}
 }
 
 // WithExchangeType sets the exchange type. The default is ExchangeTypeTopic.
 func WithExchangeType(t ExchangeType) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.exchType = t
-		return nil
 	}
 }
 
 // ExchangeName sets the exchange name. For each worker, and additional string
 // will be appended for the worker number.
 func ExchangeName(name string) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.exchName = name
-		return nil
 	}
 }
 
 // ConsumerName sets the consumer name of the consuming queue.
 func ConsumerName(name string) ConfigFunc {
-	return func(c *Client) error {
-		if c.started {
-			return ErrAlreadyConfigured
-		}
+	return func(c *config) {
 		c.consumerName = name
-		return nil
 	}
 }
 
 // NotDurable marks the exchange and the queue not to be durable. Default is
 // durable.
-func NotDurable(c *Client) error {
-	if c.started {
-		return ErrAlreadyConfigured
-	}
+func NotDurable(c *config) {
 	c.durable = false
-	return nil
 }
 
 // AutoDelete marks the exchange and queues with autoDelete property which
 // causes the messages to be automatically removed from the queue when
 // consumed.
-func AutoDelete(c *Client) error {
-	if c.started {
-		return ErrAlreadyConfigured
-	}
+func AutoDelete(c *config) {
 	c.autoDelete = true
-	return nil
 }
 
 // Internal sets the exchange to be internal.
-func Internal(c *Client) error {
-	if c.started {
-		return ErrAlreadyConfigured
-	}
+func Internal(c *config) {
 	c.internal = true
-	return nil
 }
 
 // NoWait marks the exchange as noWait. When noWait is true, declare without
 // waiting for a confirmation from the server. The channel may be closed as a
 // result of an error.
-func NoWait(c *Client) error {
-	if c.started {
-		return ErrAlreadyConfigured
-	}
+func NoWait(c *config) {
 	c.noWait = true
-	return nil
 }
 
 // ExclusiveQueue marks the queue as exclusive. Exclusive queues are only
@@ -209,10 +246,34 @@ func NoWait(c *Client) error {
 // connection closes. Channels on other connections will receive an error when
 // attempting to declare, bind, consume, purge or delete a queue with the same
 // name.
-func ExclusiveQueue(c *Client) error {
-	if c.started {
-		return ErrAlreadyConfigured
-	}
+func ExclusiveQueue(c *config) {
 	c.exclusive = true
-	return nil
+}
+
+// RetryDelay sets the time delay for attempting to reconnect. The default
+// value is 100ms.
+func RetryDelay(d time.Duration) ConfigFunc {
+	return func(c *config) {
+		c.retryDelay = d
+	}
+}
+
+// AutoAck sets the consuming ack behaviour. The default is false.
+func AutoAck(c *config) {
+	c.autoAck = true
+}
+
+// Buffer sets the amount of messages each worker can keep in their channels.
+func Buffer(n int) ConfigFunc {
+	return func(c *config) {
+		c.chBuff = n
+	}
+}
+
+// Logger lets the user to provide their own logger. The default logger is a
+// noop struct.
+func Logger(l logger) ConfigFunc {
+	return func(c *config) {
+		c.logger = l
+	}
 }

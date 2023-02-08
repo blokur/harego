@@ -1,6 +1,3 @@
-service:
-  golangci-lint-version: 1.45.x
-
 linters-settings:
   funlen:
     lines: 100
@@ -95,10 +92,15 @@ issues:
         - dupl # we usualy duplicate code in tests
         - errcheck
         - govet
+    - path: mocks
+      linters:
+        - stylecheck
+        - revive
   fix: true
   exclude-use-default: false
 
 run:
+  go: "1.18"
   timeout: 5m
   skip-dirs:
     - model
@@ -115,7 +117,6 @@ linters:
     - bidichk
     - bodyclose
     - cyclop
-    - deadcode
     - depguard
     - dogsled
     - dupl
@@ -130,6 +131,7 @@ linters:
     - gocritic
     - gocyclo
     - godot
+    - godox
     - gofmt
     - gofumpt
     - goprintffuncname
@@ -146,10 +148,8 @@ linters:
     - predeclared
     - promlinter
     - revive
-    - rowserrcheck
     - sqlclosecheck
     - staticcheck
-    - structcheck
     - stylecheck
     - tenv
     - tparallel
@@ -157,6 +157,5 @@ linters:
     - unconvert
     - unparam
     - unused
-    - varcheck
     - wastedassign
     - whitespace

@@ -7,6 +7,7 @@ import (
 )
 
 // RabbitMQ defines a rabbitmq exchange.
+//
 //go:generate mockery --name RabbitMQ --filename rabbitmq_mock.go
 type RabbitMQ interface {
 	Channel() (Channel, error)
@@ -21,6 +22,7 @@ type RabbitMQ interface {
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
+//
 //go:generate mockery --name Channel --filename channel_mock.go
 type Channel interface {
 	// ExchangeDeclare declares an exchange on the server. If the exchange does
@@ -62,3 +64,14 @@ type Channel interface {
 	// broadcast to listeners to this channel.
 	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
 }
+
+// logger implements ways of writing user facing logs to the stdout/stderr.
+type logger interface {
+	Warn(args ...interface{})
+	Warnf(format string, args ...interface{})
+}
+
+type nullLogger struct{}
+
+func (nullLogger) Warn(args ...interface{})                 {}
+func (nullLogger) Warnf(format string, args ...interface{}) {}

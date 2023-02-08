@@ -1,7 +1,7 @@
 package mocks
 
 import (
-	"github.com/blokur/harego"
+	"github.com/blokur/harego/v2"
 )
 
 // RabbitMQSimple is a simple mock type for the RabbitMQ.

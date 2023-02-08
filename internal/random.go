@@ -3,15 +3,9 @@ package internal
 import (
 	"fmt"
 	"math/rand"
-	"time"
 )
 
 // stolen from "github.com/docker/docker/pkg/namesgenerator"
-
-func init() {
-	// nolint:gosec // it's not an operation critical seed.
-	rand.Seed(time.Now().UnixNano())
-}
 
 var (
 	left = [...]string{

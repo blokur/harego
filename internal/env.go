@@ -1,3 +1,4 @@
+// Package internal provides some internal functionalities for the library.
 package internal
 
 // this file contains the settings for environment variables used during tests.
