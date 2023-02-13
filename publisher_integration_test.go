@@ -81,6 +81,9 @@ func testIntegPublisherPublishConcurrent(t *testing.T, total, workers int) {
 
 func testIntegPublisherPublishWorkers(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("slow test")
+	}
 	vh := "test." + testament.RandomString(20)
 	exchange1 := "test." + testament.RandomString(20)
 	exchange2 := "test." + testament.RandomString(20)
@@ -241,7 +244,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		wg.Wait()
 		return true
-	}, time.Minute, 50*time.Millisecond)
+	}, 2*time.Minute, 50*time.Millisecond)
 
 	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
 }

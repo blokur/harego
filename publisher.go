@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -176,7 +175,7 @@ func (p *Publisher) Close() error {
 	if p.conn != nil {
 		er := p.conn.Close()
 		if er != nil {
-			err = multierror.Append(err, er)
+			err = errors.Join(err, er)
 		}
 		p.conn = nil
 	}

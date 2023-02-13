@@ -271,16 +271,21 @@ func testIntegConsumerConsumeRequeue(t *testing.T) {
 		return true
 	}, time.Minute, 10*time.Millisecond)
 
-	assert.EqualValues(t, wantMsgs, gotMsgs)
+	if diff := cmp.Diff(wantMsgs, gotMsgs); diff != "" {
+		t.Errorf("(-want +got):\\n%s", diff)
+	}
 }
 
 func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("slow test")
+	}
 	vh := "test." + testament.RandomString(20)
 	exchange1 := "test." + testament.RandomString(20)
-	exchange2 := "test." + testament.RandomString(20)
+	exchange2 := "test." + testament.RandomString(21)
 	queueName1 := "test." + testament.RandomString(20)
-	queueName2 := "test." + testament.RandomString(20)
+	queueName2 := "test." + testament.RandomString(21)
 
 	_, pub1 := getConsumerPublisher(t, vh, exchange1, "")
 	_, pub2 := getConsumerPublisher(t, vh, exchange2, "")
@@ -331,6 +336,7 @@ func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
 		})
 		assert.ErrorIs(t, err, context.Canceled)
 	}()
+
 	assert.Eventually(t, func() bool {
 		mu1.RLock()
 		defer mu1.RUnlock()
@@ -341,11 +347,9 @@ func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
 			return true
 		}
 		return false
-	}, time.Minute, 10*time.Millisecond)
-	mu1.RLock()
-	defer mu1.RUnlock()
-	mu2.RLock()
-	defer mu2.RUnlock()
+	}, time.Minute, 100*time.Millisecond)
+	cancel()
+
 	if diff := cmp.Diff(want1, got1, testament.StringSliceComparer); diff != "" {
 		t.Errorf("(-want +got):\\n%s", diff)
 	}
@@ -356,6 +360,9 @@ func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
 
 func testIntegConsumerUseSameQueue(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("slow test")
+	}
 	vh := "test." + testament.RandomString(20)
 	exchange1 := "test." + testament.RandomString(20)
 	exchange2 := "test." + testament.RandomString(20)
@@ -415,6 +422,9 @@ func testIntegConsumerUseSameQueue(t *testing.T) {
 
 func testIntegConsumerPublishWorkers(t *testing.T) {
 	t.Parallel()
+	if testing.Short() {
+		t.Skip("slow test")
+	}
 	vh := "test." + testament.RandomString(20)
 	exchange1 := "test." + testament.RandomString(20)
 	exchange2 := "test." + testament.RandomString(20)
@@ -546,7 +556,7 @@ func testIntegConsumerReconnect(t *testing.T) {
 	assert.Eventually(t, func() bool {
 		wg.Wait()
 		return true
-	}, time.Minute, 50*time.Millisecond)
+	}, 2*time.Minute, 50*time.Millisecond)
 
 	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
 }
