@@ -4,6 +4,7 @@ package harego_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -14,7 +15,6 @@ import (
 	"github.com/blokur/harego/v2"
 	"github.com/blokur/testament"
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

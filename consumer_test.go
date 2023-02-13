@@ -2,6 +2,7 @@ package harego_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
@@ -10,7 +11,6 @@ import (
 
 	"github.com/blokur/testament"
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

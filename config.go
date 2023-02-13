@@ -1,10 +1,11 @@
 package harego
 
 import (
+	"errors"
+	"fmt"
 	"time"
 
 	"github.com/blokur/harego/v2/internal"
-	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -27,7 +28,7 @@ func URLConnector(url string) Connector {
 	return func() (RabbitMQ, error) {
 		conn, err := amqp.Dial(url)
 		if err != nil {
-			return nil, errors.Wrapf(err, "creating a connection to %q", url)
+			return nil, fmt.Errorf("creating a connection to %q: %w", url, err)
 		}
 		return &rabbitWrapper{conn}, nil
 	}

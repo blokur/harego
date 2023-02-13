@@ -4,6 +4,7 @@ package harego_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,6 @@ import (
 
 	"github.com/arsham/retry"
 	"github.com/google/go-cmp/cmp"
-	"github.com/pkg/errors"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -267,7 +267,7 @@ func testIntegPublisherClose(t *testing.T) {
 			if err == nil {
 				return
 			}
-			assert.Contains(t, []error{harego.ErrClosed, context.Canceled}, errors.Cause(err))
+			assert.True(t, errors.Is(err, harego.ErrClosed) || errors.Is(err, context.Canceled))
 		}()
 	}
 
@@ -279,7 +279,7 @@ func testIntegPublisherClose(t *testing.T) {
 			if err == nil {
 				return
 			}
-			assert.Contains(t, []error{harego.ErrClosed, context.Canceled}, errors.Cause(err))
+			assert.True(t, errors.Is(err, harego.ErrClosed) || errors.Is(err, context.Canceled))
 		}()
 	}
 
