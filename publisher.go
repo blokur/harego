@@ -101,6 +101,32 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 	return p, nil
 }
 
+// acquireNewChannel closes the channel and starts a new one if the publisher
+// is not closed.
+func (p *Publisher) acquireNewChannel(ch Channel) Channel {
+	p.logErr(ch.Close())
+	delete(p.channels, ch)
+	for {
+		p.mu.RLock()
+		if p.closed {
+			p.mu.RUnlock()
+			return nil
+		}
+		p.mu.RUnlock()
+		var err error
+		ch, err = p.newChannel()
+		if err == nil {
+			break
+		}
+		time.Sleep(p.retryDelay)
+	}
+	p.channels[ch] = struct{}{}
+	p.publishWorker(ch)
+	p.registerReconnect(ch)
+	p.logger.Info("Reconnected publisher")
+	return ch
+}
+
 // Publish sends the msg to the broker via the next available workers.
 func (p *Publisher) Publish(msg *amqp.Publishing) error {
 	p.mu.RLock()
@@ -141,6 +167,12 @@ func (p *Publisher) publishWorker(ch Channel) {
 				*msg.msg,
 			)
 			p.mu.RUnlock()
+			if errors.Is(err, amqp.ErrClosed) {
+				p.pubCh <- msg
+				ch := p.acquireNewChannel(ch)
+				p.publishWorker(ch)
+				return
+			}
 			if err != nil {
 				err = fmt.Errorf("publishing message: %w", err)
 			}

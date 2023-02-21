@@ -491,7 +491,7 @@ func testIntegConsumerReconnect(t *testing.T) {
 		cons      *harego.Consumer
 		r         = &retry.Retry{
 			Delay:    500 * time.Millisecond,
-			Attempts: 10,
+			Attempts: 20,
 		}
 	)
 
@@ -500,7 +500,7 @@ func testIntegConsumerReconnect(t *testing.T) {
 		var err error
 		pub, err = harego.NewPublisher(harego.URLConnector(addr),
 			harego.ExchangeName(exchange),
-			harego.RetryDelay(100*time.Millisecond),
+			harego.RetryDelay(500*time.Millisecond),
 		)
 		return err
 	})
