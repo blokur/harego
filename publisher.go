@@ -105,14 +105,13 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 // is not closed.
 func (p *Publisher) acquireNewChannel(ch Channel) Channel {
 	p.logErr(ch.Close())
+	p.mu.Lock()
 	delete(p.channels, ch)
 	for {
-		p.mu.RLock()
 		if p.closed {
-			p.mu.RUnlock()
+			p.mu.Unlock()
 			return nil
 		}
-		p.mu.RUnlock()
 		var err error
 		ch, err = p.newChannel()
 		if err == nil {
@@ -121,6 +120,7 @@ func (p *Publisher) acquireNewChannel(ch Channel) Channel {
 		time.Sleep(p.retryDelay)
 	}
 	p.channels[ch] = struct{}{}
+	p.mu.Unlock()
 	p.publishWorker(ch)
 	p.registerReconnect(ch)
 	p.logger.Info("Reconnected publisher")
