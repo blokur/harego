@@ -28,6 +28,7 @@ type Consumer struct {
 	conn    RabbitMQ
 	channel Channel
 	queue   amqp.Queue
+	msgs    <-chan amqp.Delivery // for cleaning up
 
 	// queue properties.
 	queueName  string
@@ -124,11 +125,12 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 	c.mu.Lock()
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.consumeCh = make(chan amqp.Delivery, c.workers*c.chBuff)
-	c.mu.Unlock()
 	err := c.setupConsumeCh()
 	if err != nil {
+		c.mu.Unlock()
 		return fmt.Errorf("setting up consume process: %w", err)
 	}
+	c.mu.Unlock()
 
 	go func() {
 		<-c.ctx.Done()
@@ -266,23 +268,28 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ch:
-			c.mu.RLock()
+		case err := <-ch:
+			c.logger.Warnf("closed consumer: %v", err)
+			c.mu.Lock()
 			if c.closed {
-				c.mu.RUnlock()
+				c.mu.Unlock()
 				return
 			}
-			c.mu.RUnlock()
+			if c.msgs != nil {
+				// We should clean up the channel otherwise it will block on other
+				// channels reading from the same connection.
+				for range c.msgs {
+				}
+			}
 			if c.channel != nil {
 				c.logErr(c.channel.Close())
 				c.channel = nil
 			}
 			if c.conn != nil {
 				c.logErr(c.conn.Close())
-				c.mu.Lock()
 				c.conn = nil
-				c.mu.Unlock()
 			}
+			c.mu.Unlock()
 			c.keepConnecting()
 			go c.registerReconnect(ctx)
 		}
@@ -392,7 +399,8 @@ func (c *Consumer) setupConsumeCh() error {
 	if c.consumeCh == nil {
 		return nil
 	}
-	msgs, err := c.channel.Consume(
+	var err error
+	c.msgs, err = c.channel.Consume(
 		c.queueName,
 		c.consumerName,
 		c.autoAck,
@@ -405,7 +413,7 @@ func (c *Consumer) setupConsumeCh() error {
 		return fmt.Errorf("getting consume channel: %w", err)
 	}
 	go func() {
-		for msg := range msgs {
+		for msg := range c.msgs {
 			select {
 			case <-c.ctx.Done():
 				return
