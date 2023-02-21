@@ -71,7 +71,7 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 
 	p := cnf.publisher()
 	p.connector = connector
-	p.ctx, p.cancel = context.WithCancel(context.Background())
+	p.ctx, p.cancel = context.WithCancel(p.ctx)
 
 	err := p.validate()
 	if err != nil {

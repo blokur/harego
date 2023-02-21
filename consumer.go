@@ -71,7 +71,7 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 
 	c := cnf.consumer()
 	c.connector = connector
-	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.cancel = context.WithCancel(c.ctx)
 
 	if c.prefetchCount < c.workers {
 		c.prefetchCount = c.workers

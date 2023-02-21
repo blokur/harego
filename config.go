@@ -7,6 +7,7 @@ import (
 
 	"github.com/blokur/harego/v2/internal"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"golang.org/x/net/context"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.
@@ -51,6 +52,7 @@ type config struct {
 	consumerName string
 	retryDelay   time.Duration
 	logger       logger
+	ctx          context.Context
 
 	// queue properties.
 	queueName  string
@@ -86,6 +88,7 @@ func defaultConfig() *config {
 		consumerName: internal.GetRandomName(),
 		retryDelay:   100 * time.Millisecond,
 		logger:       &nullLogger{},
+		ctx:          context.Background(),
 	}
 }
 
@@ -110,6 +113,7 @@ func (c *config) consumer() *Consumer {
 		deliveryMode:  c.deliveryMode,
 		chBuff:        c.chBuff,
 		logger:        c.logger,
+		ctx:           c.ctx,
 	}
 }
 
@@ -133,6 +137,7 @@ func (c *config) publisher() *Publisher {
 		deliveryMode:  c.deliveryMode,
 		chBuff:        c.chBuff,
 		logger:        c.logger,
+		ctx:           c.ctx,
 	}
 }
 
@@ -276,5 +281,13 @@ func Buffer(n int) ConfigFunc {
 func Logger(l logger) ConfigFunc {
 	return func(c *config) {
 		c.logger = l
+	}
+}
+
+// Context sets a context on the object that would stop it when the context is
+// cancelled. The default context has no condition for cancellation.
+func Context(ctx context.Context) ConfigFunc {
+	return func(c *config) {
+		c.ctx = ctx
 	}
 }
