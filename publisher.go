@@ -316,7 +316,7 @@ func (p *Publisher) keepConnecting() Channel {
 func (p *Publisher) dial() (func() error, error) {
 	// already reconnected
 	if p.conn != nil {
-		return nil, nil
+		return p.conn.Close, nil
 	}
 	conn, err := p.connector()
 	if err != nil {
@@ -327,8 +327,13 @@ func (p *Publisher) dial() (func() error, error) {
 }
 
 func (p *Publisher) newChannel() (Channel, error) {
+	cleanup, err := p.dial()
+	if err != nil {
+		return nil, err
+	}
 	ch, err := p.conn.Channel()
 	if err != nil {
+		p.logErr(cleanup())
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 
@@ -342,6 +347,7 @@ func (p *Publisher) newChannel() (Channel, error) {
 		nil,
 	)
 	if err != nil {
+		p.logErr(cleanup())
 		return nil, fmt.Errorf("declaring exchange: %w", err)
 	}
 	return ch, nil

@@ -74,6 +74,7 @@ func testNewPublisherChannel(t *testing.T) {
 	t.Parallel()
 	r := mocks.NewRabbitMQ(t)
 	r.On("Channel").Return(nil, assert.AnError).Once()
+	r.On("Close").Return(nil).Once()
 
 	_, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
 	testament.AssertInError(t, err, assert.AnError)
@@ -85,6 +86,7 @@ func testNewPublisherExchangeDeclare(t *testing.T) {
 	ch := mocks.NewChannel(t)
 
 	r.On("Channel").Return(ch, nil).Once()
+	r.On("Close").Return(nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
