@@ -331,11 +331,6 @@ func (p *Publisher) newChannel() (Channel, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
-	// to make sure rabbitmq is fair on workers.
-	err = ch.Qos(p.prefetchCount, p.prefetchSize, true)
-	if err != nil {
-		return nil, fmt.Errorf("setting Qos: %w", err)
-	}
 
 	err = ch.ExchangeDeclare(
 		p.exchName,

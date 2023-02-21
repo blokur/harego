@@ -21,7 +21,6 @@ func TestNewPublisher(t *testing.T) {
 	t.Parallel()
 	t.Run("BadInput", testNewPublisherBadInput)
 	t.Run("Channel", testNewPublisherChannel)
-	t.Run("Qos", testNewPublisherQos)
 	t.Run("ExchangeDeclare", testNewPublisherExchangeDeclare)
 }
 
@@ -80,27 +79,12 @@ func testNewPublisherChannel(t *testing.T) {
 	testament.AssertInError(t, err, assert.AnError)
 }
 
-func testNewPublisherQos(t *testing.T) {
-	t.Parallel()
-	r := mocks.NewRabbitMQ(t)
-	ch := mocks.NewChannel(t)
-
-	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(assert.AnError).Once()
-
-	_, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
-	testament.AssertInError(t, err, assert.AnError)
-}
-
 func testNewPublisherExchangeDeclare(t *testing.T) {
 	t.Parallel()
 	r := mocks.NewRabbitMQ(t)
 	ch := mocks.NewChannel(t)
 
 	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
@@ -127,8 +111,6 @@ func testPublisherPublishAlreadyClosed(t *testing.T) {
 	ch := mocks.NewChannel(t)
 
 	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
@@ -153,8 +135,6 @@ func testPublisherPublishPublishError(t *testing.T) {
 	ch := mocks.NewChannel(t)
 
 	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
 
 	exchName := testament.RandomString(10)
 	exchType := harego.ExchangeTypeFanout
@@ -201,8 +181,6 @@ func testPublisherCloseAlreadyClosed(t *testing.T) {
 	ch := mocks.NewChannel(t)
 
 	r.On("Channel").Return(ch, nil).Once()
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-		Return(nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
@@ -245,8 +223,6 @@ func testPublisherCloseErrors(t *testing.T) {
 			ch := mocks.NewChannel(t)
 
 			r.On("Channel").Return(ch, nil).Once()
-			ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
-				Return(nil).Once()
 			ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
