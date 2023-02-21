@@ -86,7 +86,7 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
 
-	err = c.setupChannel()
+	_, err = c.setupChannel()
 	if err != nil {
 		return nil, fmt.Errorf("setting up a channel: %w", err)
 	}
@@ -290,16 +290,14 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 }
 
 func (c *Consumer) keepConnecting() {
-	channel := func() error {
-		var err error
-		c.channel, err = c.conn.Channel()
-		if err != nil {
-			return fmt.Errorf("opening a new channel: %w", err)
-		}
-		return nil
-	}
-	var err error
+	// In each step we create a connection, we want to clean up if any of the
+	// consequent step fails.
+	var cleanups []func() error
 	for {
+		for _, fn := range cleanups {
+			c.logErr(fn())
+		}
+		cleanups = make([]func() error, 0, 2)
 		time.Sleep(c.retryDelay)
 		c.mu.RLock()
 		if c.closed {
@@ -307,55 +305,61 @@ func (c *Consumer) keepConnecting() {
 			return
 		}
 		c.mu.RUnlock()
-		err = c.dial()
+
+		cleanup, err := c.dial()
 		if err != nil {
+			c.logger.Debugf("dial up: %w", err)
 			continue
 		}
-		err = channel()
+		cleanups = append(cleanups, cleanup)
+
+		cleanup, err = c.setupChannel()
 		if err != nil {
+			c.logger.Debugf("setting up a channel: %w", err)
 			continue
 		}
-		err = c.setupChannel()
-		if err != nil {
-			continue
-		}
+		cleanups = append(cleanups, cleanup)
+
 		err = c.setupQueue()
 		if err != nil {
+			c.logger.Debugf("setting up the queue: %w", err)
 			continue
 		}
 		err = c.setupConsumeCh()
 		if err != nil {
+			c.logger.Debugf("setting up the consumer channel: %w", err)
 			continue
 		}
+		c.logger.Info("Reconnected consumer")
 		return
 	}
 }
 
-func (c *Consumer) dial() error {
+func (c *Consumer) dial() (func() error, error) {
 	// already reconnected
 	if c.conn != nil {
-		return nil
+		return nil, nil
 	}
 	conn, err := c.connector()
 	if err != nil {
-		return fmt.Errorf("getting a connection to the broker: %w", err)
+		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
 	c.conn = conn
-	return nil
+	return conn.Close, nil
 }
 
-func (c *Consumer) setupChannel() error {
+func (c *Consumer) setupChannel() (func() error, error) {
 	var err error
 	c.channel, err = c.conn.Channel()
 	if err != nil {
-		return fmt.Errorf("creating channel: %w", err)
+		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 	// to make sure rabbitmq is fair on workers.
 	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, true)
 	if err != nil {
-		return fmt.Errorf("setting Qos: %w", err)
+		return nil, fmt.Errorf("setting Qos: %w", err)
 	}
-	return nil
+	return c.channel.Close, nil
 }
 
 func (c *Consumer) setupQueue() error {

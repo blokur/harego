@@ -67,11 +67,17 @@ type Channel interface {
 
 // logger implements ways of writing user facing logs to the stdout/stderr.
 type logger interface {
+	Errorf(format string, args ...interface{})
 	Warn(args ...interface{})
 	Warnf(format string, args ...interface{})
+	Info(args ...interface{})
+	Debugf(format string, args ...interface{})
 }
 
 type nullLogger struct{}
 
-func (nullLogger) Warn(args ...interface{})                 {}
-func (nullLogger) Warnf(format string, args ...interface{}) {}
+func (nullLogger) Warn(args ...interface{})                  {}
+func (nullLogger) Warnf(format string, args ...interface{})  {}
+func (nullLogger) Errorf(format string, args ...interface{}) {}
+func (nullLogger) Info(args ...interface{})                  {}
+func (nullLogger) Debugf(format string, args ...interface{}) {}

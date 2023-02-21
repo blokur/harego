@@ -222,10 +222,14 @@ func (p *Publisher) registerReconnect(ch Channel) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case <-errCh:
+		case err := <-errCh:
+			p.logger.Warnf("closed publisher: %v", err)
+			p.mu.RLock()
 			if p.closed {
+				p.mu.RUnlock()
 				return
 			}
+			p.mu.RUnlock()
 
 			p.logErr(ch.Close())
 
@@ -245,7 +249,14 @@ func (p *Publisher) registerReconnect(ch Channel) {
 }
 
 func (p *Publisher) keepConnecting() Channel {
+	// In each step we create a connection, we want to clean up if any of the
+	// consequent step fails.
+	var cleanups []func() error
 	for {
+		for _, fn := range cleanups {
+			p.logErr(fn())
+		}
+		cleanups = make([]func() error, 0, 2)
 		time.Sleep(p.retryDelay)
 		p.mu.RLock()
 		if p.closed {
@@ -253,29 +264,34 @@ func (p *Publisher) keepConnecting() Channel {
 			return nil
 		}
 		p.mu.RUnlock()
-		err := p.dial()
+
+		cleanup, err := p.dial()
 		if err != nil {
+			p.logger.Debugf("dial up: %w", err)
 			continue
 		}
+		cleanups = append(cleanups, cleanup)
+
 		newCh, err := p.conn.Channel()
 		if err != nil {
+			p.logger.Debugf("setting up a channel: %w", err)
 			continue
 		}
 		return newCh
 	}
 }
 
-func (p *Publisher) dial() error {
+func (p *Publisher) dial() (func() error, error) {
 	// already reconnected
 	if p.conn != nil {
-		return nil
+		return nil, nil
 	}
 	conn, err := p.connector()
 	if err != nil {
-		return fmt.Errorf("getting a connection to the broker: %w", err)
+		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
 	p.conn = conn
-	return nil
+	return conn.Close, nil
 }
 
 func (p *Publisher) newChannel() (Channel, error) {
