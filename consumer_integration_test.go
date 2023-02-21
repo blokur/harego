@@ -277,7 +277,6 @@ func testIntegConsumerConsumeRequeue(t *testing.T) {
 }
 
 func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}
@@ -359,7 +358,6 @@ func testIntegConsumerSeparatedConsumePublish(t *testing.T) {
 }
 
 func testIntegConsumerUseSameQueue(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}
@@ -421,7 +419,6 @@ func testIntegConsumerUseSameQueue(t *testing.T) {
 }
 
 func testIntegConsumerPublishWorkers(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}
@@ -478,7 +475,6 @@ func testIntegConsumerPublishWorkers(t *testing.T) {
 }
 
 func testIntegConsumerReconnect(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}

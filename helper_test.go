@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arsham/retry"
 	"github.com/blokur/testament"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
@@ -80,14 +81,34 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
 	}, conf...)
-	pub, err := harego.NewPublisher(harego.URLConnector(url),
-		conf...,
+
+	var (
+		pub  *harego.Publisher
+		cons *harego.Consumer
+		r    = &retry.Retry{
+			Attempts: 20,
+			Delay:    200 * time.Millisecond,
+		}
 	)
+
+	err = r.Do(func() error {
+		var err error
+		pub, err = harego.NewPublisher(harego.URLConnector(url),
+			conf...,
+		)
+		return err
+	})
 	require.NoError(t, err)
-	cons, err := harego.NewConsumer(harego.URLConnector(url),
-		conf...,
-	)
+
+	err = r.Do(func() error {
+		var err error
+		cons, err = harego.NewConsumer(harego.URLConnector(url),
+			conf...,
+		)
+		return err
+	})
 	require.NoError(t, err)
+
 	t.Cleanup(func() {
 		pub.Close()
 		cons.Close()

@@ -80,7 +80,6 @@ func testIntegPublisherPublishConcurrent(t *testing.T, total, workers int) {
 }
 
 func testIntegPublisherPublishWorkers(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}
@@ -137,7 +136,6 @@ func testIntegPublisherPublishWorkers(t *testing.T) {
 }
 
 func testIntegPublisherReconnect(t *testing.T) {
-	t.Parallel()
 	if testing.Short() {
 		t.Skip("slow test")
 	}
