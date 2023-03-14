@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arsham/retry"
+	"github.com/arsham/retry/v2"
 	"github.com/blokur/testament"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"

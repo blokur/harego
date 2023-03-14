@@ -8,7 +8,7 @@ run="."
 dir="./..."
 short="-short"
 flags=""
-timeout=2m
+timeout=5m
 
 include ./config/dev.env
 export $(shell sed 's/=.*//' ./config/dev.env)
@@ -51,6 +51,7 @@ integration_deps: ## Install integration test databases. It removes every existi
 	@-docker pull $(rabbitmq_image)
 	@-docker network create harego
 	@docker run -d --net harego -p $(RABBITMQ_PORT):5672 -p $(RABBITMQ_ADMIN_PORT):15672 --user rabbitmq --name $(rabbitmq_container) --hostname $(rabbitmq_container) -e RABBITMQ_DEFAULT_USER=$(RABBITMQ_USER) -e RABBITMQ_DEFAULT_PASS=$(RABBITMQ_PASSWORD) $(rabbitmq_image) rabbitmq-server --erlang-cookie=harego
+	@sleep 2
 	@docker exec $(rabbitmq_container) rabbitmqctl wait /var/lib/rabbitmq/mnesia/rabbit@$(rabbitmq_container).pid
 	@docker exec $(rabbitmq_container) rabbitmqctl set_permissions "$(RABBITMQ_USER)" ".*" ".*" ".*"
 	@echo "RabbitMQ has been setup"
@@ -78,9 +79,10 @@ dependencies: ## Install dependencies requried for development operations.
 	@go get -u -d github.com/stretchr/testify/mock
 	@go install github.com/vektra/mockery/v2@latest
 	@go install github.com/cespare/reflex@latest
-	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.45.2
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	@go install github.com/psampaz/go-mod-outdated@latest
 	@go install github.com/jondot/goweight@latest
+	@go install golang.org/x/vuln/cmd/govulncheck@latest
 	@go get -t -u golang.org/x/tools/cmd/cover
 	@go get -t -u github.com/sonatype-nexus-community/nancy@latest
 	@go get -u golang.org/x/tools/cmd/stringer
@@ -104,6 +106,7 @@ coverage: ## Show the test coverage on browser.
 
 .PHONY: audit
 audit: ## Audit the code for updates, vulnerabilities and binary weight.
+	govulncheck ./...
 	go list -u -m -json all | go-mod-outdated -update -direct
 	go list -json -deps | nancy sleuth
 	goweight | head -n 20

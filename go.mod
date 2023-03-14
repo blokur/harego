@@ -3,7 +3,7 @@ module github.com/blokur/harego/v2
 go 1.20
 
 require (
-	github.com/arsham/retry v0.5.2
+	github.com/arsham/retry/v2 v2.0.0
 	github.com/blokur/testament v0.3.1
 	github.com/google/go-cmp v0.5.9
 	github.com/rabbitmq/amqp091-go v1.7.0
@@ -31,7 +31,6 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/klauspost/compress v1.15.15 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/patternmatcher v0.5.0 // indirect
@@ -44,6 +43,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.0.6 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/rogpeppe/go-internal v1.9.0 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	github.com/spf13/afero v1.9.3 // indirect
 	github.com/spf13/cast v1.5.0 // indirect
