@@ -1,6 +1,6 @@
 # Harego
 
-High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
+High-level library on top of [amqp][amqp].
 
 [![Build Status](https://travis-ci.com/blokur/harego.svg?token=TM5LRGpEAwKms8UULFDi&branch=master)](https://travis-ci.com/blokur/harego)
 
@@ -9,16 +9,14 @@ High-level library on top of [amqp][github.com/rabbitmq/amqp091-go].
 1. [Description](#description)
    - [Note](#note)
 2. [Usage](#usage)
-   - [NewConsumer](#newconsume)
-   - [NewPublisher](#newpublisher)
-   - [Publish](#publish)
-   - [Consume](#consume)
+   - [Consumer](#consumer)
+   - [Publisher](#publisher)
    - [Delays](#delays)
    - [Requeueing](#requeueing)
 3. [Development](#development)
    - [Prerequisite](#prerequisite)
-   - [Running Tests](#running_tests)
-   - [Make Examples](#make_examples)
+   - [Running Tests](#running-tests)
+   - [Make Examples](#make-examples)
    - [Mocks](#mocks)
    - [RabbitMQ](#rabbitmq)
 
@@ -52,48 +50,31 @@ release.
 
 ## Usage
 
-### NewConsumer
+### Consumer
 
-The only requirement for the NewClient function is a Connector to connect to the
-broker when needed:
+The only requirement for the NewConsumer function is a Connector to connect to
+the broker when needed:
 
 ```go
 // to use an address:
-harego.NewClient(harego.URLConnector(address))
+harego.NewConsumer(harego.URLConnector(address))
 // to use an amqp connection:
-harego.NewClient(harego.AMQPConnector(conn))
+harego.NewConsumer(harego.AMQPConnector(conn))
 ```
 
 The connector is used when the connection is lost, so the Client can initiate a
 new connection.
 
-### Publish
-
-In this setup the message is sent to the `myexchange` exchange:
-
-```go
-client, err := harego.NewClient(harego.URLConnector(address),
-	harego.ExchangeName("myexchange"),
-)
-// handle the error.
-err = client.Publish(&amqp.Publishing{
-	Body: []byte(msg),
-})
-// handle the error.
-```
-
-### Consume
-
 In this setup the `myqueue` is bound to the `myexchange` exchange, and handler
 is called for each message that are read from this queue:
 
 ```go
-client, err := harego.NewClient(harego.URLConnector(address),
+consumer, err := harego.NewConsumer(harego.URLConnector(address),
 	harego.ExchangeName("myexchange"),
 	harego.QueueName("myqueue"),
 )
 // handle the error.
-err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+err = consumer.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 	return harego.AckTypeAck, 0
 })
 // handle the error.
@@ -103,13 +84,13 @@ You can create multiple workers in the above example for concurrently handle
 multiple messages:
 
 ```go
-client, err := harego.NewClient(harego.URLConnector(address),
+consumer, err := harego.NewConsumer(harego.URLConnector(address),
 	harego.ExchangeName("myexchange"),
 	harego.QueueName("myqueue"),
 	harego.Workers(20),
 )
 // handle the error.
-err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+err = consumer.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
 	return harego.AckTypeAck, 0
 })
 // handle the error.
@@ -117,6 +98,21 @@ err = client.Consume(ctx, func(msg *amqp.Delivery) (harego.AckType, time.Duratio
 
 The handler will receive 20 messages concurrently and the Ack is sent for each
 message separately.
+
+### Publisher
+
+In this setup the message is sent to the `myexchange` exchange:
+
+```go
+publisher, err := harego.NewPublisher(harego.URLConnector(address),
+	harego.ExchangeName("myexchange"),
+)
+// handle the error.
+err = publisher.Publish(&amqp.Publishing{
+	Body: []byte(msg),
+})
+// handle the error.
+```
 
 ### Delays
 
