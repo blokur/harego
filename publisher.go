@@ -238,7 +238,7 @@ func (p *Publisher) validate() error {
 
 func (p *Publisher) logErr(err error) {
 	if err != nil {
-		p.logger.Warn(err)
+		p.logger.Errorf(err.Error())
 	}
 }
 

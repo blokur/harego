@@ -150,7 +150,7 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 
 func (c *Consumer) logErr(err error) {
 	if err != nil {
-		c.logger.Warn(err)
+		c.logger.Errorf(err.Error())
 	}
 }
 
