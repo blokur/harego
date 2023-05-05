@@ -278,7 +278,7 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 			if c.msgs != nil {
 				// We should clean up the channel otherwise it will block on other
 				// channels reading from the same connection.
-				for range c.msgs {
+				for range c.msgs { //nolint:revive // this is on purpose.
 				}
 			}
 			if c.channel != nil {

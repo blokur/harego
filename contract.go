@@ -76,8 +76,8 @@ type logger interface {
 
 type nullLogger struct{}
 
-func (nullLogger) Warn(args ...interface{})                  {}
-func (nullLogger) Warnf(format string, args ...interface{})  {}
-func (nullLogger) Errorf(format string, args ...interface{}) {}
-func (nullLogger) Info(args ...interface{})                  {}
-func (nullLogger) Debugf(format string, args ...interface{}) {}
+func (nullLogger) Warn(...interface{})           {}
+func (nullLogger) Warnf(string, ...interface{})  {}
+func (nullLogger) Errorf(string, ...interface{}) {}
+func (nullLogger) Info(...interface{})           {}
+func (nullLogger) Debugf(string, ...interface{}) {}
