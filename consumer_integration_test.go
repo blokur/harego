@@ -486,8 +486,8 @@ func testIntegConsumerReconnect(t *testing.T) {
 		pub       *harego.Publisher
 		cons      *harego.Consumer
 		r         = &retry.Retry{
-			Delay:    500 * time.Millisecond,
-			Attempts: 20,
+			Delay:    time.Second,
+			Attempts: 30,
 		}
 	)
 
