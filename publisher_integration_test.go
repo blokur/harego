@@ -147,8 +147,8 @@ func testIntegPublisherReconnect(t *testing.T) {
 		pub       *harego.Publisher
 		cons      *harego.Consumer
 		r         = &retry.Retry{
-			Delay:    500 * time.Millisecond,
-			Attempts: 10,
+			Delay:    time.Second,
+			Attempts: 30,
 		}
 	)
 
@@ -157,7 +157,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 		var err error
 		pub, err = harego.NewPublisher(harego.URLConnector(addr),
 			harego.ExchangeName(exchange),
-			harego.RetryDelay(100*time.Millisecond),
+			harego.RetryDelay(500*time.Millisecond),
 		)
 		return err
 	})

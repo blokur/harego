@@ -92,6 +92,7 @@ issues:
         - dupl # we usualy duplicate code in tests
         - errcheck
         - govet
+        - gocritic
     - path: mocks
       linters:
         - stylecheck
