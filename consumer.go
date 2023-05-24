@@ -75,6 +75,9 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 	}
 
 	c := cnf.consumer()
+	if c.chBuff == 0 {
+		c.chBuff = 1
+	}
 	c.connector = connector
 	c.ctx, c.cancel = context.WithCancel(c.ctx)
 
@@ -96,19 +99,16 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		return nil, fmt.Errorf("setting up a channel: %w", err)
 	}
 
+	c.publisher, err = NewPublisher(connector, conf...)
+	if err != nil {
+		return nil, fmt.Errorf("setting up requeue: %w", err)
+	}
+
 	err = c.setupQueue()
 	if err != nil {
 		return nil, fmt.Errorf("setting up a queue: %w", err)
 	}
 
-	if c.chBuff == 0 {
-		c.chBuff = 1
-	}
-
-	c.publisher, err = NewPublisher(connector, conf...)
-	if err != nil {
-		return nil, fmt.Errorf("setting up requeue: %w", err)
-	}
 	c.registerReconnect(c.ctx)
 	c.logger = c.logger.
 		WithName("consume").

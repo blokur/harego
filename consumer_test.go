@@ -111,9 +111,13 @@ func testNewConsumerQueueDeclare(t *testing.T) {
 	r := mocks.NewRabbitMQ(t)
 	ch := mocks.NewChannel(t)
 
-	r.On("Channel").Return(ch, nil).Once()
+	r.On("Channel").Return(ch, nil)
 	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).Return(make(chan *amqp.Error, 10))
 	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).
 		Return(amqp.Queue{}, assert.AnError).Once()
@@ -139,12 +143,16 @@ func testNewConsumerQueueBindNoArgs(t *testing.T) {
 	prefetchSize := rand.Intn(9999)
 	queue := testament.RandomString(10)
 
-	r.On("Channel").Return(ch, nil).Once()
+	r.On("Channel").Return(ch, nil)
 	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
 		Return(nil).Once()
 	ch.On("QueueDeclare", queue, false, true, mock.Anything,
 		true, mock.Anything).
 		Return(amqp.Queue{}, nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).Return(make(chan *amqp.Error, 10))
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
@@ -172,9 +180,13 @@ func testNewConsumerQueueBindArgs(t *testing.T) {
 		"arg2": "val2",
 	}
 
-	r.On("Channel").Return(ch, nil).Once()
+	r.On("Channel").Return(ch, nil)
 	ch.On("Qos", prefetchCount, prefetchSize, mock.Anything).
 		Return(nil).Once()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Once()
+	ch.On("NotifyClose", mock.Anything).Return(make(chan *amqp.Error, 10))
 	ch.On("QueueDeclare", queue, false, true, mock.Anything,
 		true, mock.MatchedBy(func(a amqp.Table) bool {
 			if diff := cmp.Diff(amqp.Table(args), a); diff != "" {
@@ -229,8 +241,7 @@ func testClientConsumeChannelError(t *testing.T) {
 		Return(amqp.Queue{}, nil).Once()
 	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("NotifyClose", mock.Anything).
-		Return(make(chan *amqp.Error, 10))
+	ch.On("NotifyClose", mock.Anything).Return(make(chan *amqp.Error, 10))
 
 	queueName := testament.RandomString(10)
 	consumerName := testament.RandomString(10)
@@ -356,7 +367,6 @@ func testClientConsumeAlreadyClosed(t *testing.T) {
 
 func testClientConsumeHandlePanics(t *testing.T) {
 	t.Parallel()
-
 	t.Run("DefaultLogger", testClientConsumeHandlePanicsDefaultLogger)
 	t.Run("WithLogger", testClientConsumeHandlePanicsWithLogger)
 }
@@ -415,6 +425,7 @@ func testClientConsumeHandlePanicsWithLogger(t *testing.T) {
 
 	logger.isInError(t, assert.AnError)
 }
+
 func testClientClose(t *testing.T) {
 	t.Parallel()
 	t.Run("AlreadyClosed", testClientCloseAlreadyClosed)
