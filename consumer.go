@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -57,6 +58,8 @@ type Consumer struct {
 	ctx       context.Context // for turning off the Consumer.
 	cancel    func()
 	closed    bool
+
+	panicHandler PanicHandler
 }
 
 // NewConsumer returns a Consumer capable of publishing and consuming messages.
@@ -112,6 +115,13 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		WithName(c.exchName).
 		WithName(c.queueName)
 
+	if c.panicHandler == nil {
+		c.panicHandler = func(msg *amqp.Delivery, r any) (a AckType, delay time.Duration) {
+			err := fmt.Errorf("panic: %v", r)
+			c.logger.WithValues("message_id", msg.MessageId).Error(err, string(debug.Stack()))
+			return AckTypeRequeue, time.Second
+		}
+	}
 	return c, nil
 }
 
@@ -161,9 +171,17 @@ func (c *Consumer) logErr(err error, msg string) {
 }
 
 func (c *Consumer) consumeLoop(handler HandlerFunc) {
+	h := func(msg *amqp.Delivery) (a AckType, delay time.Duration) {
+		defer func() {
+			if r := recover(); r != nil {
+				a, delay = c.panicHandler(msg, r)
+			}
+		}()
+		return handler(msg)
+	}
 	for msg := range c.consumeCh {
 		msg := msg
-		a, delay := handler(&msg)
+		a, delay := h(&msg)
 		switch a {
 		case AckTypeAck:
 			time.Sleep(delay)

@@ -2,6 +2,7 @@ package harego_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -14,14 +15,18 @@ import (
 
 	"github.com/arsham/retry/v2"
 	"github.com/blokur/testament"
+	"github.com/go-logr/logr"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/blokur/harego/v2"
 	"github.com/blokur/harego/v2/internal"
+	"github.com/blokur/harego/v2/mocks"
 )
 
 func init() {
@@ -193,4 +198,122 @@ func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 			"start_app",
 		})
 	}()
+}
+
+// sink represents a logging implementation.
+type sink struct {
+	values map[any]any
+	info   [][]any
+	errors []error
+}
+
+func (s *sink) Init(logr.RuntimeInfo) {}
+func (s *sink) Enabled(int) bool      { return true }
+func (s *sink) Info(_ int, msg string, kv ...any) {
+	s.info = append(s.info, append([]any{msg}, kv...))
+}
+
+func (s *sink) Error(err error, _ string, _ ...any) {
+	s.errors = append(s.errors, err)
+}
+
+func (s *sink) WithValues(kv ...any) logr.LogSink {
+	for i := 0; i < len(kv); i += 2 {
+		s.values[kv[i]] = kv[i+1]
+	}
+	return s
+}
+
+func (s *sink) WithName(string) logr.LogSink { return s }
+
+type mockLogger struct {
+	sink   *sink
+	logger logr.Logger
+}
+
+func newMockLogger() *mockLogger {
+	s := &sink{
+		values: make(map[any]any),
+	}
+	return &mockLogger{
+		sink:   s,
+		logger: logr.New(s),
+	}
+}
+
+func (m *mockLogger) isInError(t *testing.T, err error) {
+	// We give the errors.Is a chance to traverse the error chain first.
+	for _, needle := range m.sink.errors {
+		if errors.Is(needle, err) {
+			return
+		}
+	}
+	for _, needle := range m.sink.errors {
+		if strings.Contains(needle.Error(), err.Error()) {
+			return
+		}
+	}
+	t.Errorf("expected error %v to be in %v", err, m.sink.errors)
+}
+
+type acknowledger struct {
+	ackFunc    func(tag uint64, multiple bool) error
+	nackFunc   func(tag uint64, multiple, requeue bool) error
+	rejectFunc func(tag uint64, requeue bool) error
+}
+
+func (a *acknowledger) Ack(tag uint64, multiple bool) error {
+	if a.ackFunc != nil {
+		return a.ackFunc(tag, multiple)
+	}
+	return nil
+}
+
+func (a *acknowledger) Nack(tag uint64, multiple, requeue bool) error {
+	if a.nackFunc != nil {
+		return a.nackFunc(tag, multiple, requeue)
+	}
+	return nil
+}
+
+func (a *acknowledger) Reject(tag uint64, multiple bool) error {
+	if a.rejectFunc != nil {
+		return a.rejectFunc(tag, multiple)
+	}
+	return nil
+}
+
+// getPassingChannel returns a mock of the amqp.Channel interface that has
+// messages in it's queue.
+func getPassingChannel(t *testing.T, messages int) *mocks.Channel {
+	t.Helper()
+	ch := mocks.NewChannel(t)
+	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(amqp.Queue{}, nil).Maybe()
+	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+	ch.On("NotifyClose", mock.Anything).
+		Return(make(chan *amqp.Error, 10)).Maybe()
+
+	delivery := make(chan amqp.Delivery, messages)
+	for i := 0; i < messages; i++ {
+		delivery <- amqp.Delivery{
+			Acknowledger: &acknowledger{},
+			Body:         []byte(fmt.Sprintf("message #%d", i)),
+		}
+	}
+	ch.On("Consume", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	).Return((<-chan amqp.Delivery)(delivery), nil).Maybe()
+	ch.On("Publish", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(nil).Maybe()
+	ch.On("Close").Return(nil).Maybe()
+	return ch
 }

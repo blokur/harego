@@ -21,6 +21,12 @@ type RabbitMQ interface {
 // at your own peril.
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 
+// PanicHandler is used when the consumer encounters a panic during the
+// handling of a message. The message is passed as is and the result of the
+// recover() call is passed as the second argument. You must not panic in this
+// handler!
+type PanicHandler func(msg *amqp.Delivery, r any) (a AckType, delay time.Duration)
+
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
 //
 //go:generate mockery --name Channel --filename channel_mock.go

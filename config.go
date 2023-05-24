@@ -78,7 +78,8 @@ type config struct {
 	prefetchSize  int
 	deliveryMode  DeliveryMode
 
-	chBuff int
+	chBuff       int
+	panicHandler PanicHandler
 }
 
 func defaultConfig() *config {
@@ -118,6 +119,7 @@ func (c *config) consumer() *Consumer {
 		chBuff:        c.chBuff,
 		logger:        c.logger,
 		ctx:           c.ctx,
+		panicHandler:  c.panicHandler,
 	}
 }
 
@@ -308,5 +310,15 @@ func WithLogrus(l logrus.FieldLogger) ConfigFunc {
 func Context(ctx context.Context) ConfigFunc {
 	return func(c *config) {
 		c.ctx = ctx
+	}
+}
+
+// WithPanicHandler sets a callback for handling panics during consuming
+// messages. The default handler will log the panic with a traceback and
+// returns a AckTypeRequeue with 1 sec delay. You should not panic during this
+// handler!
+func WithPanicHandler(h PanicHandler) ConfigFunc {
+	return func(c *config) {
+		c.panicHandler = h
 	}
 }
