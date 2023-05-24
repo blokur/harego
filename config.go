@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/bombsimon/logrusr/v4"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 
 	"github.com/blokur/harego/v2/internal"
@@ -276,11 +278,28 @@ func Buffer(n int) ConfigFunc {
 	}
 }
 
+// DeprecatedLogger lets the user to provide their own logger. The default
+// logger is a noop struct.
+// Deprecated: please use the new Logger function.
+func DeprecatedLogger(l logger) ConfigFunc {
+	return func(c *config) {
+		c.logger = logr.New(internal.NewSink(l))
+	}
+}
+
 // Logger lets the user to provide their own logger. The default logger is a
 // noop struct.
 func Logger(l logr.Logger) ConfigFunc {
 	return func(c *config) {
 		c.logger = l
+	}
+}
+
+// WithLogrus is a helper that sets an already setup logrus instance as the
+// logger.
+func WithLogrus(l logrus.FieldLogger) ConfigFunc {
+	return func(c *config) {
+		c.logger = logrusr.New(l)
 	}
 }
 
