@@ -93,6 +93,7 @@ issues:
         - errcheck
         - govet
         - gocritic
+        - unparam
     - path: mocks
       linters:
         - stylecheck

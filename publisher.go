@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -15,18 +16,16 @@ import (
 // communication. Zero value is not usable.
 // nolint:govet // most likely not an issue, but cleaner this way.
 type Publisher struct {
-	connector    Connector
-	workers      int
-	consumerName string
-	retryDelay   time.Duration
-	logger       logger
+	connector  Connector
+	workers    int
+	retryDelay time.Duration
+	logger     logr.Logger
 
 	mu       sync.RWMutex
 	conn     RabbitMQ
 	channels map[Channel]struct{}
 
 	// queue properties.
-	queueName  string
 	routingKey string
 	exclusive  bool
 	queueArgs  amqp.Table
@@ -98,13 +97,16 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 		p.publishWorker(ch)
 		p.registerReconnect(ch)
 	}
+	p.logger = p.logger.
+		WithName("publish").
+		WithName(p.exchName)
 	return p, nil
 }
 
 // acquireNewChannel closes the channel and starts a new one if the publisher
 // is not closed.
 func (p *Publisher) acquireNewChannel(ch Channel) Channel {
-	p.logErr(ch.Close())
+	p.logErr(ch.Close(), "closing channel")
 	p.mu.Lock()
 	delete(p.channels, ch)
 	for {
@@ -221,9 +223,6 @@ func (p *Publisher) validate() error {
 	if p.workers < 1 {
 		return fmt.Errorf("not enough workers: %d: %w", p.workers, ErrInput)
 	}
-	if p.consumerName == "" {
-		return fmt.Errorf("empty consumer name: %w", ErrInput)
-	}
 	if p.exchName == "" {
 		return fmt.Errorf("empty exchange name: %w", ErrInput)
 	}
@@ -236,9 +235,9 @@ func (p *Publisher) validate() error {
 	return nil
 }
 
-func (p *Publisher) logErr(err error) {
+func (p *Publisher) logErr(err error, msg string) {
 	if err != nil {
-		p.logger.Errorf(err.Error())
+		p.logger.Error(err, msg)
 	}
 }
 
@@ -255,7 +254,7 @@ func (p *Publisher) registerReconnect(ch Channel) {
 		case <-p.ctx.Done():
 			return
 		case err := <-errCh:
-			p.logger.Warnf("closed publisher: %v", err)
+			p.logger.Error(err, "closed publisher")
 			p.mu.RLock()
 			if p.closed {
 				p.mu.RUnlock()
@@ -263,11 +262,11 @@ func (p *Publisher) registerReconnect(ch Channel) {
 			}
 			p.mu.RUnlock()
 
-			p.logErr(ch.Close())
+			p.logErr(ch.Close(), "closing channel")
 
 			p.mu.Lock()
 			if p.conn != nil {
-				p.logErr(p.conn.Close())
+				p.logErr(p.conn.Close(), "closing connection")
 				p.conn = nil
 			}
 			p.mu.Unlock()
@@ -286,7 +285,7 @@ func (p *Publisher) keepConnecting() Channel {
 	var cleanups []func() error
 	for {
 		for _, fn := range cleanups {
-			p.logErr(fn())
+			p.logErr(fn(), "cleaning up")
 		}
 		cleanups = make([]func() error, 0, 2)
 		time.Sleep(p.retryDelay)
@@ -299,14 +298,14 @@ func (p *Publisher) keepConnecting() Channel {
 
 		cleanup, err := p.dial()
 		if err != nil {
-			p.logger.Debugf("dial up: %w", err)
+			p.logger.V(1).Info("dial up", "err", err)
 			continue
 		}
 		cleanups = append(cleanups, cleanup)
 
 		newCh, err := p.conn.Channel()
 		if err != nil {
-			p.logger.Debugf("setting up a channel: %w", err)
+			p.logger.V(1).Info("setting up a channel", "err", err)
 			continue
 		}
 		return newCh
@@ -333,7 +332,7 @@ func (p *Publisher) newChannel() (Channel, error) {
 	}
 	ch, err := p.conn.Channel()
 	if err != nil {
-		p.logErr(cleanup())
+		p.logErr(cleanup(), "creating channel")
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 
@@ -347,7 +346,7 @@ func (p *Publisher) newChannel() (Channel, error) {
 		nil,
 	)
 	if err != nil {
-		p.logErr(cleanup())
+		p.logErr(cleanup(), "declaring exchange")
 		return nil, fmt.Errorf("declaring exchange: %w", err)
 	}
 	return ch, nil

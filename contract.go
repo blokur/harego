@@ -65,19 +65,3 @@ type Channel interface {
 	NotifyClose(receiver chan *amqp.Error) chan *amqp.Error
 }
 
-// logger implements ways of writing user facing logs to the stdout/stderr.
-type logger interface {
-	Errorf(format string, args ...interface{})
-	Warn(args ...interface{})
-	Warnf(format string, args ...interface{})
-	Info(args ...interface{})
-	Debugf(format string, args ...interface{})
-}
-
-type nullLogger struct{}
-
-func (nullLogger) Warn(...interface{})           {}
-func (nullLogger) Warnf(string, ...interface{})  {}
-func (nullLogger) Errorf(string, ...interface{}) {}
-func (nullLogger) Info(...interface{})           {}
-func (nullLogger) Debugf(string, ...interface{}) {}

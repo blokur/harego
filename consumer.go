@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -22,7 +23,7 @@ type Consumer struct {
 	consumerName string
 	retryDelay   time.Duration
 	publisher    *Publisher // used for requeueing messages.
-	logger       logger
+	logger       logr.Logger
 
 	mu      sync.RWMutex
 	conn    RabbitMQ
@@ -106,6 +107,11 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		return nil, fmt.Errorf("setting up requeue: %w", err)
 	}
 	c.registerReconnect(c.ctx)
+	c.logger = c.logger.
+		WithName("consume").
+		WithName(c.exchName).
+		WithName(c.queueName)
+
 	return c, nil
 }
 
@@ -148,9 +154,9 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 	return c.ctx.Err()
 }
 
-func (c *Consumer) logErr(err error) {
+func (c *Consumer) logErr(err error, msg string) {
 	if err != nil {
-		c.logger.Errorf(err.Error())
+		c.logger.Error(err, msg)
 	}
 }
 
@@ -161,13 +167,13 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 		switch a {
 		case AckTypeAck:
 			time.Sleep(delay)
-			c.logErr(msg.Ack(false))
+			c.logErr(msg.Ack(false), "Ack message")
 		case AckTypeNack:
 			time.Sleep(delay)
-			c.logErr(msg.Nack(false, true))
+			c.logErr(msg.Nack(false, true), "Nack message")
 		case AckTypeReject:
 			time.Sleep(delay)
-			c.logErr(msg.Reject(false))
+			c.logErr(msg.Reject(false), "Reject message")
 		case AckTypeRequeue:
 			time.Sleep(delay)
 			err := c.publisher.Publish(&amqp.Publishing{
@@ -187,10 +193,10 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 				AppId:           msg.AppId,
 			})
 			if err != nil {
-				c.logErr(msg.Nack(false, true))
+				c.logErr(msg.Nack(false, true), "Requeue message")
 				continue
 			}
-			c.logErr(msg.Ack(false))
+			c.logErr(msg.Ack(false), "Ack message")
 		}
 	}
 }
@@ -269,7 +275,7 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case err := <-ch:
-			c.logger.Warnf("closed consumer: %v", err)
+			c.logger.Info("closed consumer", "err", err)
 			c.mu.Lock()
 			if c.closed {
 				c.mu.Unlock()
@@ -282,11 +288,11 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 				}
 			}
 			if c.channel != nil {
-				c.logErr(c.channel.Close())
+				c.logErr(c.channel.Close(), "Closing channel")
 				c.channel = nil
 			}
 			if c.conn != nil {
-				c.logErr(c.conn.Close())
+				c.logErr(c.conn.Close(), "Closing connection")
 				c.conn = nil
 			}
 			c.mu.Unlock()
@@ -302,7 +308,7 @@ func (c *Consumer) keepConnecting() {
 	var cleanups []func() error
 	for {
 		for _, fn := range cleanups {
-			c.logErr(fn())
+			c.logErr(fn(), "Cleaning up")
 		}
 		cleanups = make([]func() error, 0, 2)
 		time.Sleep(c.retryDelay)
@@ -315,26 +321,26 @@ func (c *Consumer) keepConnecting() {
 
 		cleanup, err := c.dial()
 		if err != nil {
-			c.logger.Debugf("dial up: %w", err)
+			c.logger.V(1).Info("dial up", "err", err)
 			continue
 		}
 		cleanups = append(cleanups, cleanup)
 
 		cleanup, err = c.setupChannel()
 		if err != nil {
-			c.logger.Debugf("setting up a channel: %w", err)
+			c.logger.V(1).Info("setting up a channel", "err", err)
 			continue
 		}
 		cleanups = append(cleanups, cleanup)
 
 		err = c.setupQueue()
 		if err != nil {
-			c.logger.Debugf("setting up the queue: %w", err)
+			c.logger.V(1).Info("setting up the queue", "err", err)
 			continue
 		}
 		err = c.setupConsumeCh()
 		if err != nil {
-			c.logger.Debugf("setting up the consumer channel: %w", err)
+			c.logger.V(1).Info("setting up the consumer channel", "err", err)
 			continue
 		}
 		c.logger.Info("Reconnected consumer")

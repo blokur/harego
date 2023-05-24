@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blokur/harego/v2/internal"
+	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"golang.org/x/net/context"
+
+	"github.com/blokur/harego/v2/internal"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.
@@ -51,7 +53,7 @@ type config struct {
 	workers      int
 	consumerName string
 	retryDelay   time.Duration
-	logger       logger
+	logger       logr.Logger
 	ctx          context.Context
 
 	// queue properties.
@@ -87,7 +89,7 @@ func defaultConfig() *config {
 		durable:      true,
 		consumerName: internal.GetRandomName(),
 		retryDelay:   100 * time.Millisecond,
-		logger:       &nullLogger{},
+		logger:       logr.Discard(),
 		ctx:          context.Background(),
 	}
 }
@@ -120,9 +122,7 @@ func (c *config) consumer() *Consumer {
 func (c *config) publisher() *Publisher {
 	return &Publisher{
 		workers:       c.workers,
-		consumerName:  c.consumerName,
 		retryDelay:    c.retryDelay,
-		queueName:     c.queueName,
 		routingKey:    c.routingKey,
 		exclusive:     c.exclusive,
 		queueArgs:     c.queueArgs,
@@ -278,7 +278,7 @@ func Buffer(n int) ConfigFunc {
 
 // Logger lets the user to provide their own logger. The default logger is a
 // noop struct.
-func Logger(l logger) ConfigFunc {
+func Logger(l logr.Logger) ConfigFunc {
 	return func(c *config) {
 		c.logger = l
 	}

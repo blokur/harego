@@ -5,12 +5,13 @@ go 1.20
 require (
 	github.com/arsham/retry/v2 v2.0.0
 	github.com/blokur/testament v0.3.1
+	github.com/go-logr/logr v1.2.4
 	github.com/google/go-cmp v0.5.9
 	github.com/rabbitmq/amqp091-go v1.8.1
 	github.com/spf13/viper v1.15.0
-	github.com/stretchr/testify v1.8.2
-	github.com/testcontainers/testcontainers-go v0.19.0
-	golang.org/x/net v0.9.0
+	github.com/stretchr/testify v1.8.3
+	github.com/testcontainers/testcontainers-go v0.20.1
+	golang.org/x/net v0.10.0
 )
 
 require (
@@ -31,6 +32,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
+	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/klauspost/compress v1.16.5 // indirect
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
