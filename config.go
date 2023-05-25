@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blokur/harego/v2/internal"
+	"github.com/bombsimon/logrusr/v4"
+	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
+
+	"github.com/blokur/harego/v2/internal"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.
@@ -51,7 +55,7 @@ type config struct {
 	workers      int
 	consumerName string
 	retryDelay   time.Duration
-	logger       logger
+	logger       logr.Logger
 	ctx          context.Context
 
 	// queue properties.
@@ -74,7 +78,8 @@ type config struct {
 	prefetchSize  int
 	deliveryMode  DeliveryMode
 
-	chBuff int
+	chBuff       int
+	panicHandler PanicHandler
 }
 
 func defaultConfig() *config {
@@ -87,7 +92,7 @@ func defaultConfig() *config {
 		durable:      true,
 		consumerName: internal.GetRandomName(),
 		retryDelay:   100 * time.Millisecond,
-		logger:       &nullLogger{},
+		logger:       logr.Discard(),
 		ctx:          context.Background(),
 	}
 }
@@ -114,15 +119,14 @@ func (c *config) consumer() *Consumer {
 		chBuff:        c.chBuff,
 		logger:        c.logger,
 		ctx:           c.ctx,
+		panicHandler:  c.panicHandler,
 	}
 }
 
 func (c *config) publisher() *Publisher {
 	return &Publisher{
 		workers:       c.workers,
-		consumerName:  c.consumerName,
 		retryDelay:    c.retryDelay,
-		queueName:     c.queueName,
 		routingKey:    c.routingKey,
 		exclusive:     c.exclusive,
 		queueArgs:     c.queueArgs,
@@ -276,11 +280,28 @@ func Buffer(n int) ConfigFunc {
 	}
 }
 
+// DeprecatedLogger lets the user to provide their own logger. The default
+// logger is a noop struct.
+// Deprecated: please use the new Logger function.
+func DeprecatedLogger(l logger) ConfigFunc {
+	return func(c *config) {
+		c.logger = logr.New(internal.NewSink(l))
+	}
+}
+
 // Logger lets the user to provide their own logger. The default logger is a
 // noop struct.
-func Logger(l logger) ConfigFunc {
+func Logger(l logr.Logger) ConfigFunc {
 	return func(c *config) {
 		c.logger = l
+	}
+}
+
+// WithLogrus is a helper that sets an already setup logrus instance as the
+// logger.
+func WithLogrus(l logrus.FieldLogger) ConfigFunc {
+	return func(c *config) {
+		c.logger = logrusr.New(l)
 	}
 }
 
@@ -289,5 +310,15 @@ func Logger(l logger) ConfigFunc {
 func Context(ctx context.Context) ConfigFunc {
 	return func(c *config) {
 		c.ctx = ctx
+	}
+}
+
+// WithPanicHandler sets a callback for handling panics during consuming
+// messages. The default handler will log the panic with a traceback and
+// returns a AckTypeRequeue with 1 sec delay. You should not panic during this
+// handler!
+func WithPanicHandler(h PanicHandler) ConfigFunc {
+	return func(c *config) {
+		c.panicHandler = h
 	}
 }

@@ -21,6 +21,12 @@ type RabbitMQ interface {
 // at your own peril.
 type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 
+// PanicHandler is used when the consumer encounters a panic during the
+// handling of a message. The message is passed as is and the result of the
+// recover() call is passed as the second argument. You must not panic in this
+// handler!
+type PanicHandler func(msg *amqp.Delivery, r any) (a AckType, delay time.Duration)
+
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
 //
 //go:generate mockery --name Channel --filename channel_mock.go
@@ -67,17 +73,9 @@ type Channel interface {
 
 // logger implements ways of writing user facing logs to the stdout/stderr.
 type logger interface {
-	Errorf(format string, args ...interface{})
-	Warn(args ...interface{})
-	Warnf(format string, args ...interface{})
-	Info(args ...interface{})
-	Debugf(format string, args ...interface{})
+	Errorf(format string, args ...any)
+	Warn(args ...any)
+	Warnf(format string, args ...any)
+	Info(args ...any)
+	Debugf(format string, args ...any)
 }
-
-type nullLogger struct{}
-
-func (nullLogger) Warn(...interface{})           {}
-func (nullLogger) Warnf(string, ...interface{})  {}
-func (nullLogger) Errorf(string, ...interface{}) {}
-func (nullLogger) Info(...interface{})           {}
-func (nullLogger) Debugf(string, ...interface{}) {}
