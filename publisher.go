@@ -106,7 +106,7 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 // acquireNewChannel closes the channel and starts a new one if the publisher
 // is not closed.
 func (p *Publisher) acquireNewChannel(ch Channel) Channel {
-	p.logErr(ch.Close(), "closing channel")
+	p.logErr(ch.Close(), "closing channel", "channel")
 	p.mu.Lock()
 	delete(p.channels, ch)
 	for {
@@ -235,9 +235,9 @@ func (p *Publisher) validate() error {
 	return nil
 }
 
-func (p *Publisher) logErr(err error, msg string) {
+func (p *Publisher) logErr(err error, msg, section string) {
 	if err != nil {
-		p.logger.Error(err, msg)
+		p.logger.Error(err, msg, "type", "publisher", "section", section)
 	}
 }
 
@@ -254,7 +254,7 @@ func (p *Publisher) registerReconnect(ch Channel) {
 		case <-p.ctx.Done():
 			return
 		case err := <-errCh:
-			p.logger.Error(err, "closed publisher")
+			p.logErr(err, "closed publisher", "connection")
 			p.mu.RLock()
 			if p.closed {
 				p.mu.RUnlock()
@@ -262,11 +262,11 @@ func (p *Publisher) registerReconnect(ch Channel) {
 			}
 			p.mu.RUnlock()
 
-			p.logErr(ch.Close(), "closing channel")
+			p.logErr(ch.Close(), "closing channel", "channel")
 
 			p.mu.Lock()
 			if p.conn != nil {
-				p.logErr(p.conn.Close(), "closing connection")
+				p.logErr(p.conn.Close(), "closing connection", "connection")
 				p.conn = nil
 			}
 			p.mu.Unlock()
@@ -282,12 +282,15 @@ func (p *Publisher) registerReconnect(ch Channel) {
 func (p *Publisher) keepConnecting() Channel {
 	// In each step we create a connection, we want to clean up if any of the
 	// consequent step fails.
-	var cleanups []func() error
+	type cleanup map[string]func() error
+	var cleanups []cleanup
 	for {
-		for _, fn := range cleanups {
-			p.logErr(fn(), "cleaning up")
+		for _, cln := range cleanups {
+			for section, fn := range cln {
+				p.logErr(fn(), "Cleaning up", section)
+			}
 		}
-		cleanups = make([]func() error, 0, 2)
+		cleanups = make([]cleanup, 0, 2)
 		time.Sleep(p.retryDelay)
 		p.mu.RLock()
 		if p.closed {
@@ -296,12 +299,12 @@ func (p *Publisher) keepConnecting() Channel {
 		}
 		p.mu.RUnlock()
 
-		cleanup, err := p.dial()
+		cl, err := p.dial()
 		if err != nil {
 			p.logger.V(1).Info("dial up", "err", err)
 			continue
 		}
-		cleanups = append(cleanups, cleanup)
+		cleanups = append(cleanups, cleanup{"dial": cl})
 
 		newCh, err := p.conn.Channel()
 		if err != nil {
@@ -332,7 +335,7 @@ func (p *Publisher) newChannel() (Channel, error) {
 	}
 	ch, err := p.conn.Channel()
 	if err != nil {
-		p.logErr(cleanup(), "creating channel")
+		p.logErr(cleanup(), "creating channel", "channel")
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 
@@ -346,7 +349,7 @@ func (p *Publisher) newChannel() (Channel, error) {
 		nil,
 	)
 	if err != nil {
-		p.logErr(cleanup(), "declaring exchange")
+		p.logErr(cleanup(), "declaring exchange", "exchange")
 		return nil, fmt.Errorf("declaring exchange: %w", err)
 	}
 	return ch, nil

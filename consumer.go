@@ -164,9 +164,9 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 	return c.ctx.Err()
 }
 
-func (c *Consumer) logErr(err error, msg string) {
+func (c *Consumer) logErr(err error, msg, section string) {
 	if err != nil {
-		c.logger.Error(err, msg)
+		c.logger.Error(err, msg, "type", "consumer", "section", section)
 	}
 }
 
@@ -185,13 +185,13 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 		switch a {
 		case AckTypeAck:
 			time.Sleep(delay)
-			c.logErr(msg.Ack(false), "Ack message")
+			c.logErr(msg.Ack(false), "Ack message", "ack")
 		case AckTypeNack:
 			time.Sleep(delay)
-			c.logErr(msg.Nack(false, true), "Nack message")
+			c.logErr(msg.Nack(false, true), "Nack message", "nack")
 		case AckTypeReject:
 			time.Sleep(delay)
-			c.logErr(msg.Reject(false), "Reject message")
+			c.logErr(msg.Reject(false), "Reject message", "reject")
 		case AckTypeRequeue:
 			time.Sleep(delay)
 			err := c.publisher.Publish(&amqp.Publishing{
@@ -211,10 +211,10 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 				AppId:           msg.AppId,
 			})
 			if err != nil {
-				c.logErr(msg.Nack(false, true), "Requeue message")
+				c.logErr(msg.Nack(false, true), "Requeue message", "publish")
 				continue
 			}
-			c.logErr(msg.Ack(false), "Ack message")
+			c.logErr(msg.Ack(false), "Ack message", "ack")
 		}
 	}
 }
@@ -306,11 +306,11 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 				}
 			}
 			if c.channel != nil {
-				c.logErr(c.channel.Close(), "Closing channel")
+				c.logErr(c.channel.Close(), "Closing channel", "channel")
 				c.channel = nil
 			}
 			if c.conn != nil {
-				c.logErr(c.conn.Close(), "Closing connection")
+				c.logErr(c.conn.Close(), "Closing connection", "connection")
 				c.conn = nil
 			}
 			c.mu.Unlock()
@@ -323,12 +323,15 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 func (c *Consumer) keepConnecting() {
 	// In each step we create a connection, we want to clean up if any of the
 	// consequent step fails.
-	var cleanups []func() error
+	type cleanup map[string]func() error
+	var cleanups []cleanup
 	for {
-		for _, fn := range cleanups {
-			c.logErr(fn(), "Cleaning up")
+		for _, cln := range cleanups {
+			for section, fn := range cln {
+				c.logErr(fn(), "Cleaning up", section)
+			}
 		}
-		cleanups = make([]func() error, 0, 2)
+		cleanups = make([]cleanup, 0, 2)
 		time.Sleep(c.retryDelay)
 		c.mu.RLock()
 		if c.closed {
@@ -337,19 +340,19 @@ func (c *Consumer) keepConnecting() {
 		}
 		c.mu.RUnlock()
 
-		cleanup, err := c.dial()
+		cl, err := c.dial()
 		if err != nil {
 			c.logger.V(1).Info("dial up", "err", err)
 			continue
 		}
-		cleanups = append(cleanups, cleanup)
+		cleanups = append(cleanups, cleanup{"dial": cl})
 
-		cleanup, err = c.setupChannel()
+		cl, err = c.setupChannel()
 		if err != nil {
 			c.logger.V(1).Info("setting up a channel", "err", err)
 			continue
 		}
-		cleanups = append(cleanups, cleanup)
+		cleanups = append(cleanups, cleanup{"channel": cl})
 
 		err = c.setupQueue()
 		if err != nil {
