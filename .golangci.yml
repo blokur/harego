@@ -9,7 +9,7 @@ linters-settings:
   gocyclo:
     min-complexity: 15
   gofumpt:
-    lang-version: "1.18"
+    lang-version: "1.21"
   goimports:
     local-prefixes: github.com/golangci/golangci-lint
   goconst:
@@ -25,7 +25,7 @@ linters-settings:
   godot:
     capital: true
   gosimple:
-    go: "1.18"
+    go: "1.21"
     checks: ["all"]
   govet:
     settings:
@@ -75,10 +75,10 @@ linters-settings:
   misspell:
     locale: UK
   staticcheck:
-    go: "1.18"
+    go: "1.21"
     checks: ["all"]
   stylecheck:
-    go: "1.18"
+    go: "1.21"
     checks: ["all"]
   unparam:
     check-exported: true
@@ -88,11 +88,12 @@ issues:
   exclude-rules:
     - path: _test\.go
       linters:
-        - gosec # security check is not important in tests
         - dupl # we usualy duplicate code in tests
         - errcheck
-        - govet
+        - funlen
         - gocritic
+        - gosec # security check is not important in tests
+        - govet
         - unparam
     - path: mocks
       linters:
@@ -102,7 +103,7 @@ issues:
   exclude-use-default: false
 
 run:
-  go: "1.18"
+  go: "1.21"
   timeout: 5m
   skip-dirs:
     - model
@@ -116,19 +117,24 @@ run:
 
 linters:
   enable:
+    - asciicheck
     - asasalint
     - bidichk
     - bodyclose
     - cyclop
+    - decorder
     - dogsled
     - dupl
     - durationcheck
     - errcheck
+    - errchkjson
     - errname
     - errorlint
     - execinquery
     - exportloopref
+    - forbidigo
     - forcetypeassert
+    - funlen
     - gocheckcompilerdirectives
     - gocognit
     - goconst
@@ -138,13 +144,19 @@ linters:
     - godox
     - gofmt
     - gofumpt
+    - goheader
+    - goimports
+    - gomoddirectives
+    - gomodguard
     - goprintffuncname
     - gosec
     - gosimple
     - govet
     - grouper
+    - importas
     - ineffassign
     - maintidx
+    - makezero
     - misspell
     - nakedret
     - nestif

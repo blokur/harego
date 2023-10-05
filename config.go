@@ -1,6 +1,7 @@
 package harego
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -9,7 +10,6 @@ import (
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
-	"golang.org/x/net/context"
 
 	"github.com/blokur/harego/v2/internal"
 )
