@@ -13,25 +13,30 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+        go: ["1.20.x", "1.21.x"]
+    name: Test with Go ${{ matrix.go }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v4
         with:
-          go-version: "1.20"
+          go-version: ${{ matrix.go }}
 
       - uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-${{ matrix.go }}
 
       - uses: satackey/action-docker-layer-caching@v0.0.11
         continue-on-error: true
@@ -44,23 +49,33 @@ jobs:
 
   audit:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+        go: ["1.20.x", "1.21.x"]
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v3
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v4
         with:
-          go-version: "1.20"
+          go-version: ${{ matrix.go }}
 
       - uses: actions/cache@v3
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ matrix.go }}-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-${{ matrix.go }}
+
+      - name: Check for go vulnerabilities
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
       - name: WriteGoList
         run: go list -json -deps > go.list
@@ -70,13 +85,19 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: ["ubuntu-latest"]
+        go: ["1.20.x", "1.21.x"]
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v3
+        uses: actions/checkout@v4
+
+      - name: Set up Go ${{ matrix.go }}
+        uses: actions/setup-go@v4
         with:
-          go-version: "1.20"
+          go-version: ${{ matrix.go }}
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v3
