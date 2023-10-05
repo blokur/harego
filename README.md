@@ -132,8 +132,11 @@ messages in the queue is consumed.
 
 ### Prerequisite
 
-This project supports Go >= `1.18`. To run targets from the `Makefile` you need
+This project supports Go >= `1.19`. To run targets from the `Makefile` you need
 to install GNU make. You also need docker installed for integration tests.
+
+If you have [asdf][asdf] installed, the .tool-versions file will set the go
+version to the latest supported version.
 
 In order to install dependencies:
 
@@ -198,3 +201,4 @@ make integration_deps
 
 [reflex]: https://github.com/cespare/reflex
 [amqp]: https://github.com/rabbitmq/amqp091-go
+[asdf]: https://github.com/asdf-vm/asdf
