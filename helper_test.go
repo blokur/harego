@@ -17,7 +17,6 @@ import (
 	"github.com/blokur/testament"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -28,15 +27,6 @@ import (
 	"github.com/blokur/harego/v2/internal"
 	"github.com/blokur/harego/v2/mocks"
 )
-
-func init() {
-	viper.AutomaticEnv()
-
-	internal.RabbitMQAddr = viper.GetString(internal.RabbitMQAddrName)
-	internal.RabbitMQUser = viper.GetString(internal.RabbitMQUserName)
-	internal.RabbitMQPass = viper.GetString(internal.RabbitMQPassName)
-	internal.RabbitMQVirtual = viper.GetString(internal.RabbitMQVirtualName)
-}
 
 func randomBody(lines int) string {
 	body := make([]string, lines)
@@ -58,7 +48,9 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 	if queueName == "" {
 		queueName = testament.RandomLowerString(20)
 	}
-	apiAddress := strings.Split(internal.RabbitMQAddr, ":")[0]
+	env, err := internal.GetEnv()
+	require.NoError(t, err)
+	apiAddress := strings.Split(env.RabbitMQAddr, ":")[0]
 	adminPort := 15672
 	if v, ok := os.LookupEnv("RABBITMQ_ADMIN_PORT"); ok {
 		adminPort, err = strconv.Atoi(v)
@@ -70,7 +62,7 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
 		req, err := http.NewRequestWithContext(context.Background(), "PUT", adminURL, http.NoBody)
 		require.NoError(t, err)
-		req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
+		req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
 		resp, err := http.DefaultClient.Do(req)
 		if resp != nil && resp.Body != nil {
 			defer func() {
@@ -81,7 +73,7 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 		require.NoError(t, err)
 	}
 
-	url := fmt.Sprintf("amqp://%s:%s@%s/%s", internal.RabbitMQUser, internal.RabbitMQPass, internal.RabbitMQAddr, vh)
+	url := fmt.Sprintf("amqp://%s:%s@%s/%s", env.RabbitMQUser, env.RabbitMQPass, env.RabbitMQAddr, vh)
 	conf = append([]harego.ConfigFunc{
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
@@ -136,7 +128,7 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 			func() {
 				req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, http.NoBody)
 				require.NoError(t, err)
-				req.SetBasicAuth(internal.RabbitMQUser, internal.RabbitMQPass)
+				req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
 				resp, err := http.DefaultClient.Do(req)
 				if resp != nil && resp.Body != nil {
 					defer func() {
