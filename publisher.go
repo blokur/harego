@@ -248,7 +248,7 @@ func (p *Publisher) registerReconnect(ch Channel) {
 		return
 	}
 	p.mu.RUnlock()
-	errCh := ch.NotifyClose(make(chan *amqp.Error))
+	errCh := ch.NotifyClose(make(chan *amqp.Error, 2))
 	go func() {
 		select {
 		case <-p.ctx.Done():

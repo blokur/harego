@@ -287,7 +287,7 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 		return
 	}
 	c.mu.RUnlock()
-	ch := c.channel.NotifyClose(make(chan *amqp.Error))
+	ch := c.channel.NotifyClose(make(chan *amqp.Error, 2))
 	go func() {
 		select {
 		case <-ctx.Done():
