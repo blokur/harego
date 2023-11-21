@@ -31,7 +31,11 @@ type Connector func() (RabbitMQ, error)
 // URLConnector creates a new connection from url.
 func URLConnector(url string) Connector {
 	return func() (RabbitMQ, error) {
-		conn, err := amqp.Dial(url)
+		conn, err := amqp.DialConfig(url,
+			amqp.Config{
+				Heartbeat: 10 * time.Second,
+				Locale:    "en_US",
+			})
 		if err != nil {
 			return nil, fmt.Errorf("creating a connection to %q: %w", url, err)
 		}
