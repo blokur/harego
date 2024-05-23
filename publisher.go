@@ -316,15 +316,21 @@ func (p *Publisher) keepConnecting() Channel {
 }
 
 func (p *Publisher) dial() (func() error, error) {
-	// already reconnected
+	p.mu.RLock()
 	if p.conn != nil {
+		// already reconnected
+		defer p.mu.RUnlock()
 		return p.conn.Close, nil
 	}
+	p.mu.RUnlock()
+
 	conn, err := p.connector()
 	if err != nil {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
+	p.mu.Lock()
 	p.conn = conn
+	p.mu.Unlock()
 	return conn.Close, nil
 }
 

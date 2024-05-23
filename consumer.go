@@ -150,6 +150,8 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 
 	go func() {
 		<-c.ctx.Done()
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		close(c.consumeCh)
 	}()
 	var wg sync.WaitGroup
@@ -446,7 +448,9 @@ func (c *Consumer) setupConsumeCh() error {
 				return
 			default:
 			}
+			c.mu.Lock()
 			c.consumeCh <- msg
+			c.mu.Unlock()
 		}
 	}()
 	return nil
