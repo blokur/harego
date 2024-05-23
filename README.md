@@ -132,8 +132,8 @@ messages in the queue is consumed.
 
 ### Prerequisite
 
-This project supports Go >= `1.20`. To run targets from the `Makefile` you need
-to install GNU make. You also need docker installed for integration tests.
+This project supports Go >= `1.20.`. To run targets from the `Makefile` you
+need to install GNU make. You also need docker installed for integration tests.
 
 If you have [asdf][asdf] installed, the .tool-versions file will set the go
 version to the latest supported version.
