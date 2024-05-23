@@ -9,15 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/mocks"
 	"github.com/blokur/testament"
 	"github.com/google/go-cmp/cmp"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/mocks"
 )
 
 func TestNewConsumer(t *testing.T) {
@@ -316,7 +315,7 @@ func testClientConsumeCancelledContext(t *testing.T) {
 
 	ch.On("Consume", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-	).Return((<-chan amqp.Delivery)(delivery), nil).Once() //nolint:gocritic // otherwise the mock breaks.
+	).Return((<-chan amqp.Delivery)(delivery), nil).Once()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -333,7 +332,7 @@ func testClientConsumeCancelledContext(t *testing.T) {
 		wg.Done()
 		return 0, 0
 	})
-	assert.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, context.Canceled)
 
 	assert.Eventually(t, func() bool {
 		wg.Wait()
@@ -354,7 +353,7 @@ func testClientConsumeAlreadyClosed(t *testing.T) {
 	require.NoError(t, err)
 
 	err = cons.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -446,7 +445,7 @@ func testClientCloseAlreadyClosed(t *testing.T) {
 	require.NoError(t, err)
 
 	err = cons.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = cons.Close()
 	assert.ErrorIs(t, err, harego.ErrClosed)

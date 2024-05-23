@@ -4,6 +4,7 @@ package internal
 // this file contains the settings for environment variables used during tests.
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/kelseyhightower/envconfig"
@@ -17,10 +18,10 @@ var (
 // Env contains the environment variables required to run the application.
 // nolint:govet // unlikely to have a lot of these objects.
 type Env struct {
-	RabbitMQAddr    string `envconfig:"RABBITMQ_ADDR" default:"localhost:5672"`
-	RabbitMQUser    string `envconfig:"RABBITMQ_USER" default:"guest"`
-	RabbitMQPass    string `envconfig:"RABBITMQ_PASSWORD" default:"guest"`
-	RabbitMQVirtual string `envconfig:"RABBITMQ_VH" default:"harego"`
+	RabbitMQAddr    string `default:"localhost:5672" envconfig:"RABBITMQ_ADDR"`
+	RabbitMQUser    string `default:"guest"          envconfig:"RABBITMQ_USER"`
+	RabbitMQPass    string `default:"guest"          envconfig:"RABBITMQ_PASSWORD"`
+	RabbitMQVirtual string `default:"harego"         envconfig:"RABBITMQ_VH"`
 }
 
 // GetEnv returns the environment variables required to run the application.
@@ -29,5 +30,8 @@ func GetEnv() (*Env, error) {
 	once.Do(func() {
 		err = envconfig.Process("", &environ)
 	})
-	return &environ, err
+	if err != nil {
+		return nil, fmt.Errorf("processing environment variables: %w", err)
+	}
+	return &environ, nil
 }

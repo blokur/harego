@@ -51,7 +51,8 @@ func (c *ChannelSimple) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error 
 }
 
 // Publish mocks the Channel.Publish() method.
-// nolint:gocritic // this is a mock.
+//
+//nolint:gocritic // this is a mock.
 func (c *ChannelSimple) Publish(exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
 	if c.PublishFunc != nil {
 		return c.PublishFunc(exchange, key, mandatory, immediate, msg)

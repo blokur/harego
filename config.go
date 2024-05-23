@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/blokur/harego/v2/internal"
 	"github.com/bombsimon/logrusr/v4"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
-
-	"github.com/blokur/harego/v2/internal"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.

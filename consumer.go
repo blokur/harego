@@ -116,7 +116,7 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		WithName(c.queueName)
 
 	if c.panicHandler == nil {
-		c.panicHandler = func(msg *amqp.Delivery, r any) (a AckType, delay time.Duration) {
+		c.panicHandler = func(msg *amqp.Delivery, r any) (AckType, time.Duration) {
 			err := fmt.Errorf("panic: %v", r)
 			c.logger.WithValues("message_id", msg.MessageId).Error(err, string(debug.Stack()))
 			return AckTypeRequeue, time.Second
@@ -372,7 +372,7 @@ func (c *Consumer) keepConnecting() {
 func (c *Consumer) dial() (func() error, error) {
 	// already reconnected
 	if c.conn != nil {
-		return nil, nil
+		return func() error { return nil }, nil
 	}
 	conn, err := c.connector()
 	if err != nil {

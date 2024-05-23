@@ -51,7 +51,8 @@ type Channel interface {
 	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
 
 	// Consume immediately starts delivering queued messages.
-	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool,
+		args amqp.Table) (<-chan amqp.Delivery, error)
 
 	// Qos controls how many messages or how many bytes the server will try to
 	// keep on the network for consumers before receiving delivery acks. The

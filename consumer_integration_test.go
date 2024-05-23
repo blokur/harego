@@ -57,13 +57,14 @@ func testIntegConsumerConsumeConcurrent(t *testing.T) {
 	for _, tc := range tcs {
 		tc := tc
 		t.Run(fmt.Sprintf("%dWorkers/%dMessages/", tc.workers, tc.total), func(t *testing.T) {
+			t.Parallel()
 			testIntegConsumerConsumeConcurrentDo(t, tc.total, tc.workers)
 		})
 	}
 }
 
 func testIntegConsumerConsumeConcurrentDo(t *testing.T, total, workers int) {
-	t.Parallel()
+	t.Helper()
 	exchange := "test." + testament.RandomString(20)
 	queueName := "test." + testament.RandomString(20)
 	routingKey := "test." + testament.RandomString(20)
@@ -533,7 +534,7 @@ func testIntegConsumerReconnect(t *testing.T) {
 	var calls int32
 	go func() {
 		defer wg.Done()
-		require.NotPanics(t, func() {
+		assert.NotPanics(t, func() {
 			err := cons.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
 				g := atomic.AddInt32(&calls, 1)
 				if g == int32(total/5) {

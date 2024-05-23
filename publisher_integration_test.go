@@ -12,13 +12,12 @@ import (
 	"time"
 
 	"github.com/arsham/retry/v2"
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/testament"
 	"github.com/google/go-cmp/cmp"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/testament"
 )
 
 func TestIntegPublisher(t *testing.T) {
@@ -49,13 +48,14 @@ func testIntegPublisherPublish(t *testing.T) {
 		tc := tc
 		name := fmt.Sprintf("%dWorkers/%dMessages/", tc.workers, tc.total)
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			testIntegPublisherPublishConcurrent(t, tc.total, tc.workers)
 		})
 	}
 }
 
 func testIntegPublisherPublishConcurrent(t *testing.T, total, workers int) {
-	t.Parallel()
+	t.Helper()
 	exchange := "test." + testament.RandomString(20)
 	queueName := "test." + testament.RandomString(20)
 	routingKey := "test." + testament.RandomString(20)
@@ -197,7 +197,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 	var calls int32
 	go func() {
 		defer wg.Done()
-		require.NotPanics(t, func() {
+		assert.NotPanics(t, func() {
 			i := 0
 			err := cons.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
 				i++

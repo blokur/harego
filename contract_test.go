@@ -4,15 +4,14 @@ import (
 	"fmt"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
-
 	"github.com/blokur/harego/v2"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // ExampleHandlerFunc_ack instructs the consumer to drop the message
 // immediately.
 func ExampleHandlerFunc_ack() {
-	var fn harego.HandlerFunc = func(msg *amqp.Delivery) (harego.AckType, time.Duration) {
+	var fn harego.HandlerFunc = func(*amqp.Delivery) (harego.AckType, time.Duration) {
 		// logic for working with msg.Body goes here.
 		return harego.AckTypeAck, 0
 	}

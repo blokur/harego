@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/arsham/retry/v2"
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/internal"
+	"github.com/blokur/harego/v2/mocks"
 	"github.com/blokur/testament"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -22,10 +25,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/internal"
-	"github.com/blokur/harego/v2/mocks"
 )
 
 func randomBody(lines int) string {
@@ -60,7 +59,7 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 	}
 	if vh != "" {
 		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
-		req, err := http.NewRequestWithContext(context.Background(), "PUT", adminURL, http.NoBody)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, adminURL, http.NoBody)
 		require.NoError(t, err)
 		req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
 		resp, err := http.DefaultClient.Do(req)
@@ -126,7 +125,7 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 
 		for _, url := range urls {
 			func() {
-				req, err := http.NewRequestWithContext(context.Background(), "DELETE", url, http.NoBody)
+				req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, url, http.NoBody)
 				require.NoError(t, err)
 				req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
 				resp, err := http.DefaultClient.Do(req)
@@ -234,6 +233,7 @@ func newMockLogger() *mockLogger {
 }
 
 func (m *mockLogger) isInError(t *testing.T, err error) {
+	t.Helper()
 	// We give the errors.Is a chance to traverse the error chain first.
 	for _, needle := range m.sink.errors {
 		if errors.Is(needle, err) {

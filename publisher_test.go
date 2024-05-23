@@ -7,14 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/mocks"
 	"github.com/blokur/testament"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/mocks"
 )
 
 func TestNewPublisher(t *testing.T) {
@@ -125,7 +124,7 @@ func testPublisherPublishAlreadyClosed(t *testing.T) {
 	ch.On("Close").Return(nil).Once()
 	r.On("Close").Return(nil).Once()
 	err = pub.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = pub.Publish(&amqp.Publishing{})
 	assert.ErrorIs(t, err, harego.ErrClosed)
@@ -195,7 +194,7 @@ func testPublisherCloseAlreadyClosed(t *testing.T) {
 	ch.On("Close").Return(nil)
 	r.On("Close").Return(nil)
 	err = pub.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	err = pub.Close()
 	testament.AssertInError(t, err, harego.ErrClosed)
@@ -282,7 +281,7 @@ func testPublisherClosePublishNotPanic(t *testing.T) {
 	}
 
 	err = pub.Close()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
 		wg.Wait()
 		return true

@@ -2,28 +2,28 @@ linters-settings:
   funlen:
     lines: 100
     statements: 50
+
   cyclop:
     skip-tests: true
     max-complexity: 30
     package-average: 5
+
   gocyclo:
     min-complexity: 15
-  goimports:
-    local-prefixes: github.com/golangci/golangci-lint
+
   goconst:
     min-len: 2
     min-occurrences: 3
+
   gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
+    enable-all: true
+
   godot:
     capital: true
+
   gosimple:
     checks: ["all"]
+
   govet:
     settings:
       printf:
@@ -67,109 +67,92 @@ linters-settings:
       - unsafeptr
       - unusedresult
 
-  maligned:
-    suggest-new: true
   misspell:
     locale: UK
+
   staticcheck:
     checks: ["all"]
+
   stylecheck:
     checks: ["all"]
+
   unparam:
     check-exported: true
+
+  wrapcheck:
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+      - .WithMessage(
+      - .WithMessagef(
+      - .WithStack(
+      - (context.Context).Err()
+
+  nlreturn:
+    block-size: 2
 
 issues:
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
     - path: _test\.go
       linters:
+        - contextcheck
+        - lll
         - dupl
         - errcheck
         - funlen
-        - gocritic
         - goconst
+        - gocritic
         - gosec
         - govet
+        - nlreturn
+        - nosprintfhostport
+        - revive
+        - testifylint
         - unparam
+        - wrapcheck
     - path: mocks
       linters:
-        - stylecheck
+        - lll
         - revive
+        - stylecheck
+    - path: docs.go
+      linters:
+        - dupword
+  exclude-dirs:
+    - model
+    - tmp
+    - bin
+    - scripts
   fix: true
   exclude-use-default: false
 
 run:
   timeout: 5m
-  skip-dirs:
-    - model
-    - tmp
-    - bin
-    - scripts
   allow-parallel-runners: true
   tests: true
   build-tags:
     - integration
 
 linters:
-  enable:
-    - asciicheck
-    - asasalint
-    - bidichk
-    - bodyclose
-    - cyclop
-    - decorder
-    - dogsled
-    - dupl
-    - durationcheck
-    - errcheck
-    - errchkjson
-    - errname
-    - errorlint
-    - execinquery
-    - exportloopref
-    - forbidigo
-    - forcetypeassert
-    - funlen
-    - gocheckcompilerdirectives
-    - gocognit
-    - goconst
-    - gocritic
-    - gocyclo
-    - godot
-    - godox
-    - gofmt
-    - gofumpt
-    - goheader
-    - goimports
-    - gomoddirectives
-    - gomodguard
-    - goprintffuncname
-    - gosec
-    - gosimple
-    - govet
-    - grouper
-    - importas
-    - ineffassign
-    - maintidx
-    - makezero
-    - misspell
-    - nakedret
-    - nestif
-    - nilerr
-    - noctx
-    - prealloc
-    - predeclared
-    - promlinter
-    - revive
-    - rowserrcheck
-    - sqlclosecheck
-    - staticcheck
-    - stylecheck
-    - tenv
-    - tparallel
-    - typecheck
-    - unconvert
-    - unparam
-    - unused
-    - wastedassign
-    - whitespace
+  enable-all: true
+  disable:
+    - containedctx # We need to use internal contexts.
+    - depguard # because I don't want to write a dedicated config file.
+    - err113 # We do not like its style.
+    - exhaustive # Is very strict.
+    - exhaustruct # I want to use zero values... and sometime leave a field uninitialised, because it'll be later.
+    - gochecknoglobals # We rely on globals.
+    - ireturn # We need to use them in logs.
+    - nlreturn
+    - gomnd # We have magic numbers.
+    - mnd # Same as gomnd.
+    - nolintlint # Sometimes we want to disable linters in specific places.
+    - nonamedreturns # Conflicts with paramTypeCombine.
+    - paralleltest # Full of false-positives.
+    - varnamelen # Very strict.
+    - wsl # Too restrictive for this project (maybe in the future).
