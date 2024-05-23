@@ -1,3 +1,4 @@
+// Package internal provides some internal functionalities for the library.
 package internal
 
 import (

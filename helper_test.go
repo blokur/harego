@@ -4,27 +4,24 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"log"
 	"math/rand"
-	"net/http"
-	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/arsham/retry/v2"
 	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/internal"
 	"github.com/blokur/harego/v2/mocks"
 	"github.com/blokur/testament"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/pkg/ioutils"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
 )
 
 func randomBody(lines int) string {
@@ -35,44 +32,55 @@ func randomBody(lines int) string {
 	return strings.Join(body, "\n")
 }
 
+var r = &retry.Retry{
+	Attempts: 20,
+	Delay:    300 * time.Millisecond,
+}
+
+func init() {
+	// If you faced with any issues setting up containers, comment this out:
+	testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
+}
+
 // getConsumerPublisher returns a pair of consumer and publisher. What
 // publisher sends to the exchange, the consumer will receive. If the queueName
-// is empty, a random queueName is picked.
-func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...harego.ConfigFunc) (*harego.Consumer, *harego.Publisher) {
+// is empty, a random queueName is picked. It tries to get a new container if
+// there was an error.
+func getConsumerPublisher(t *testing.T, exchange, queueName string, conf ...harego.ConfigFunc) (cons *harego.Consumer, pub *harego.Publisher) {
 	t.Helper()
 	var (
-		adminURL string
-		err      error
+		addr string
+		c    testcontainers.Container
+		ctx  = context.Background()
 	)
+	err := r.Do(func() error {
+		var err error
+		c, addr = getContainer(t)
+		cons, pub, err = getConsumerPublisherWithAddr(t, addr, exchange, queueName, conf...)
+		if err != nil {
+			c.Terminate(ctx)
+			cons.Close()
+			pub.Close()
+			return err
+		}
+		return nil
+	})
+	require.NoError(t, err)
+
+	return cons, pub
+}
+
+// getConsumerPublisherWithAddr returns a pair of consumer and publisher
+// connecting to a broker at the given address. What publisher sends to the
+// exchange, the consumer will receive. If the queueName is empty, a random
+// queueName is picked.
+func getConsumerPublisherWithAddr(t *testing.T, addr, exchange, queueName string, conf ...harego.ConfigFunc) (*harego.Consumer, *harego.Publisher, error) {
+	t.Helper()
+	var err error
 	if queueName == "" {
 		queueName = testament.RandomLowerString(20)
 	}
-	env, err := internal.GetEnv()
-	require.NoError(t, err)
-	apiAddress := strings.Split(env.RabbitMQAddr, ":")[0]
-	adminPort := 15672
-	if v, ok := os.LookupEnv("RABBITMQ_ADMIN_PORT"); ok {
-		adminPort, err = strconv.Atoi(v)
-		if err != nil {
-			adminPort = 15672
-		}
-	}
-	if vh != "" {
-		adminURL = fmt.Sprintf("http://%s:%d/api/vhosts/%s", apiAddress, adminPort, vh)
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, adminURL, http.NoBody)
-		require.NoError(t, err)
-		req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
-		resp, err := http.DefaultClient.Do(req)
-		if resp != nil && resp.Body != nil {
-			defer func() {
-				io.Copy(io.Discard, resp.Body)
-				resp.Body.Close()
-			}()
-		}
-		require.NoError(t, err)
-	}
 
-	url := fmt.Sprintf("amqp://%s:%s@%s/%s", env.RabbitMQUser, env.RabbitMQPass, env.RabbitMQAddr, vh)
 	conf = append([]harego.ConfigFunc{
 		harego.ExchangeName(exchange),
 		harego.QueueName(queueName),
@@ -81,93 +89,70 @@ func getConsumerPublisher(t *testing.T, vh, exchange, queueName string, conf ...
 	var (
 		pub  *harego.Publisher
 		cons *harego.Consumer
-		r    = &retry.Retry{
-			Attempts: 20,
-			Delay:    200 * time.Millisecond,
-		}
 	)
 
 	err = r.Do(func() error {
 		var err error
-		pub, err = harego.NewPublisher(harego.URLConnector(url),
+		pub, err = harego.NewPublisher(harego.URLConnector(addr),
 			conf...,
 		)
 		return err
 	})
-	require.NoError(t, err)
+	if err != nil {
+		return nil, nil, err
+	}
+	t.Cleanup(func() {
+		pub.Close()
+	})
 
 	err = r.Do(func() error {
 		var err error
-		cons, err = harego.NewConsumer(harego.URLConnector(url),
+		cons, err = harego.NewConsumer(harego.URLConnector(addr),
 			conf...,
 		)
 		return err
 	})
-	require.NoError(t, err)
-
+	if err != nil {
+		return nil, nil, err
+	}
 	t.Cleanup(func() {
-		pub.Close()
 		cons.Close()
-		assert.Eventually(t, func() bool {
-			cons.Close()
-			return true
-		}, 2*time.Second, 10*time.Millisecond)
-		urls := []string{
-			fmt.Sprintf("http://%s:%d/api/exchanges/%s", apiAddress, adminPort, exchange),
-		}
-		urls = append(urls,
-			fmt.Sprintf("http://%s:%d/api/queues/%s", apiAddress, adminPort, queueName),
-		)
-
-		if vh != "" {
-			urls = append(urls, adminURL)
-		}
-
-		for _, url := range urls {
-			func() {
-				req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, url, http.NoBody)
-				require.NoError(t, err)
-				req.SetBasicAuth(env.RabbitMQUser, env.RabbitMQPass)
-				resp, err := http.DefaultClient.Do(req)
-				if resp != nil && resp.Body != nil {
-					defer func() {
-						io.Copy(io.Discard, resp.Body)
-						resp.Body.Close()
-					}()
-				}
-				require.NoError(t, err)
-			}()
-		}
 	})
-	return cons, pub
+
+	return cons, pub, nil
 }
 
 // getContainer returns a new container running rabbimq that is ready for
 // accepting connections.
-func getContainer(t *testing.T) (container testcontainers.Container, addr string) {
+func getContainer(t *testing.T) (testcontainers.Container, string) {
 	t.Helper()
-	ctx := context.Background()
-	req := testcontainers.ContainerRequest{
-		Image:        "rabbitmq:3-management-alpine",
-		ExposedPorts: []string{"5672/tcp", "15672/tcp"},
-		WaitingFor:   wait.ForListeningPort("5672/tcp"),
-	}
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	rabbitmqContainer, err := rabbitmq.RunContainer(ctx,
+		testcontainers.WithImage("rabbitmq:3.13-management-alpine"),
+		rabbitmq.WithAdminUsername("guest"),
+		rabbitmq.WithAdminPassword("guest"),
+		testcontainers.WithHostConfigModifier(func(c *container.HostConfig) {
+			c.Memory = 256 * 1024 * 1024
+			c.CPUShares = 500
+		}),
+		testcontainers.CustomizeRequestOption(func(req *testcontainers.GenericContainerRequest) error {
+			req.Name = "harego_" + testament.RandomString(55)
+			return nil
+		}),
+	)
 	require.NoError(t, err)
-
-	ip, err := container.Host(ctx)
-	require.NoError(t, err)
-
-	port, err := container.MappedPort(ctx, "5672")
-	require.NoError(t, err)
-
 	t.Cleanup(func() {
-		container.Terminate(ctx)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := rabbitmqContainer.Terminate(ctx)
+		require.NoError(t, err)
 	})
-	return container, fmt.Sprintf("amqp://%s:%s/", ip, port.Port())
+
+	addr, err := rabbitmqContainer.AmqpURL(ctx)
+	require.NoError(t, err)
+
+	return rabbitmqContainer, addr
 }
 
 // restartRabbitMQ restarts the rabbitmq server inside the container.

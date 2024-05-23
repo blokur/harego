@@ -32,8 +32,8 @@ jobs:
       - uses: satackey/action-docker-layer-caching@v0.0.11
         continue-on-error: true
 
-      - name: Install Dependencies
-        run: make integration_deps
+      - name: Tidy modules
+        run: go mod tidy
 
       - name: Running Tests
         run: make ci_tests
@@ -53,6 +53,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+
+      - name: Tidy modules
+        run: go mod tidy
 
       - name: Check for go vulnerabilities
         run: |
@@ -80,6 +83,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
+
+      - name: Tidy modules
+        run: go mod tidy
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6

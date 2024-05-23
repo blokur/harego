@@ -146,18 +146,6 @@ make dependencies
 
 This also installs [reflex][reflex] to help with development process.
 
-To run this application you need to provide the following settings as
-environment variables or application arguments:
-
-```
-RABBITMQ_PORT
-RABBITMQ_ADDR
-RABBITMQ_ADMIN_PORT
-RABBITMQ_USER
-RABBITMQ_PASSWORD
-RABBITMQ_VH
-```
-
 ### Running Tests
 
 To watch for file changes and run unittest:

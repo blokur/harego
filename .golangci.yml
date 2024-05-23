@@ -101,14 +101,15 @@ issues:
     - path: _test\.go
       linters:
         - contextcheck
-        - lll
         - dupl
         - errcheck
         - funlen
+        - gochecknoinits
         - goconst
         - gocritic
         - gosec
         - govet
+        - lll
         - nlreturn
         - nosprintfhostport
         - revive

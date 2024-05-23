@@ -11,13 +11,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/arsham/retry/v2"
 	"github.com/blokur/harego/v2"
 	"github.com/blokur/testament"
 	"github.com/google/go-cmp/cmp"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
 )
 
 func TestIntegPublisher(t *testing.T) {
@@ -59,9 +59,8 @@ func testIntegPublisherPublishConcurrent(t *testing.T, total, workers int) {
 	exchange := "test." + testament.RandomString(20)
 	queueName := "test." + testament.RandomString(20)
 	routingKey := "test." + testament.RandomString(20)
-	vh := "test." + testament.RandomString(20)
 
-	_, pub := getConsumerPublisher(t, vh, exchange, queueName,
+	_, pub := getConsumerPublisher(t, exchange, queueName,
 		harego.Workers(workers),
 		harego.RoutingKey(routingKey),
 	)
@@ -83,15 +82,29 @@ func testIntegPublisherPublishWorkers(t *testing.T) {
 	if testing.Short() {
 		t.Skip("slow test")
 	}
-	vh := "test." + testament.RandomString(20)
-	exchange1 := "test." + testament.RandomString(20)
-	exchange2 := "test." + testament.RandomString(20)
-	queueName := "test." + testament.RandomString(20)
-
-	_, pub := getConsumerPublisher(t, vh, exchange1, queueName,
-		harego.Workers(10),
+	var (
+		exchange1 = "test." + testament.RandomString(20)
+		exchange2 = "test." + testament.RandomString(20)
+		queueName = "test." + testament.RandomString(20)
+		err       error
+		addr      string
+		pub       *harego.Publisher
+		cons      *harego.Consumer
 	)
-	cons, _ := getConsumerPublisher(t, vh, exchange2, queueName)
+
+	err = r.Do(func() error {
+		_, addr = getContainer(t)
+		return nil
+	}, func() error {
+		_, pub, err = getConsumerPublisherWithAddr(t, addr, exchange1, queueName,
+			harego.Workers(10),
+		)
+		return err
+	}, func() error {
+		cons, _, err = getConsumerPublisherWithAddr(t, addr, exchange2, queueName)
+		return err
+	})
+	require.NoError(t, err)
 
 	var (
 		want []string
@@ -144,36 +157,21 @@ func testIntegPublisherReconnect(t *testing.T) {
 		wg        sync.WaitGroup
 		exchange  = "test." + testament.RandomString(20)
 		queueName = "test." + testament.RandomString(20)
-		pub       *harego.Publisher
+		container testcontainers.Container
+		addr      string
 		cons      *harego.Consumer
-		r         = &retry.Retry{
-			Delay:    time.Second,
-			Attempts: 30,
-		}
+		pub       *harego.Publisher
+		err       error
 	)
 
-	container, addr := getContainer(t)
-	err := r.Do(func() error {
-		var err error
-		pub, err = harego.NewPublisher(harego.URLConnector(addr),
-			harego.ExchangeName(exchange),
-			harego.RetryDelay(500*time.Millisecond),
-		)
-		return err
-	})
-	require.NoError(t, err)
-
 	err = r.Do(func() error {
-		var err error
-		cons, err = harego.NewConsumer(harego.URLConnector(addr),
-			harego.ExchangeName(exchange),
-			harego.QueueName(queueName),
-			harego.RetryDelay(500*time.Millisecond),
-		)
+		container, addr = getContainer(t)
+		return nil
+	}, func() error {
+		cons, pub, err = getConsumerPublisherWithAddr(t, addr, exchange, queueName, harego.RetryDelay(time.Second/2))
 		return err
 	})
 	require.NoError(t, err)
-	defer cons.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -211,7 +209,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 		})
 	}()
 
-	restarted := false
+	var restarted bool
 
 	for i := 0; i < total; i++ {
 		if restarted {
@@ -249,12 +247,11 @@ func testIntegPublisherReconnect(t *testing.T) {
 
 func testIntegPublisherClose(t *testing.T) {
 	t.Parallel()
-	vh := "test." + testament.RandomString(20)
 	exchange := "test." + testament.RandomString(20)
 	queueName := "test." + testament.RandomString(20)
 
 	total := 10
-	_, pub := getConsumerPublisher(t, vh, exchange, queueName, harego.Workers(total))
+	_, pub := getConsumerPublisher(t, exchange, queueName, harego.Workers(total))
 	defer pub.Close()
 
 	var wg sync.WaitGroup
