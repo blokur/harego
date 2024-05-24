@@ -132,11 +132,19 @@ messages in the queue is consumed.
 
 ### Prerequisite
 
-This project supports Go >= `1.20.`. To run targets from the `Makefile` you
+This project supports Go >= `1.21`. To run targets from the `Makefile` you
 need to install GNU make. You also need docker installed for integration tests.
 
-If you have [asdf][asdf] installed, the .tool-versions file will set the go
-version to the latest supported version.
+> [!WARNING]
+> Please make sure you are using the Go toolchain version >= `1.21.9` to avoid
+> some vulnerabilities in the older versions.
+
+If you have [asdf][asdf] installed, you can add the following line to the
+`.tool-versions` file in the root of the project to get the latest toolchain:
+
+```go
+golang 1.22.3
+```
 
 In order to install dependencies:
 
@@ -147,6 +155,10 @@ make dependencies
 This also installs [reflex][reflex] to help with development process.
 
 ### Running Tests
+
+Note that these make targets are not necessarily required for running tests.
+You still can do the `go test ./...` form. Just make sure you add the
+`-tags=integration` in order to run the integration tests.
 
 To watch for file changes and run unittest:
 
