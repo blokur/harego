@@ -21,6 +21,7 @@ func (c *ChannelSimple) Close() error {
 	if c.CloseFunc != nil {
 		return c.CloseFunc()
 	}
+
 	return nil
 }
 
@@ -29,8 +30,10 @@ func (c *ChannelSimple) Consume(queue, consumer string, autoAck, exclusive, noLo
 	if c.ConsumeFunc != nil {
 		return c.ConsumeFunc(queue, consumer, autoAck, exclusive, noLocal, noWait, args)
 	}
+
 	ch := make(chan amqp.Delivery)
 	close(ch)
+
 	return ch, nil
 }
 
@@ -39,6 +42,7 @@ func (c *ChannelSimple) ExchangeDeclare(name, kind string, durable, autoDelete, 
 	if c.ExchangeDeclareFunc != nil {
 		return c.ExchangeDeclareFunc(name, kind, durable, autoDelete, internal, noWait, args)
 	}
+
 	return nil
 }
 
@@ -47,7 +51,10 @@ func (c *ChannelSimple) NotifyClose(receiver chan *amqp.Error) chan *amqp.Error 
 	if c.NotifyCloseFunc != nil {
 		return c.NotifyCloseFunc(receiver)
 	}
-	return make(chan *amqp.Error, 100)
+
+	const errChanSize = 100
+
+	return make(chan *amqp.Error, errChanSize)
 }
 
 // Publish mocks the Channel.Publish() method.
@@ -57,6 +64,7 @@ func (c *ChannelSimple) Publish(exchange, key string, mandatory, immediate bool,
 	if c.PublishFunc != nil {
 		return c.PublishFunc(exchange, key, mandatory, immediate, msg)
 	}
+
 	return nil
 }
 
@@ -65,6 +73,7 @@ func (c *ChannelSimple) Qos(prefetchCount, prefetchSize int, global bool) error 
 	if c.QosFunc != nil {
 		return c.QosFunc(prefetchCount, prefetchSize, global)
 	}
+
 	return nil
 }
 
@@ -73,6 +82,7 @@ func (c *ChannelSimple) QueueBind(name, key, exchange string, noWait bool, args 
 	if c.QueueBindFunc != nil {
 		return c.QueueBindFunc(name, key, exchange, noWait, args)
 	}
+
 	return nil
 }
 
@@ -81,5 +91,6 @@ func (c *ChannelSimple) QueueDeclare(name string, durable, autoDelete, exclusive
 	if c.QueueDeclareFunc != nil {
 		return c.QueueDeclareFunc(name, durable, autoDelete, exclusive, noWait, args)
 	}
+
 	return amqp.Queue{}, nil
 }

@@ -2,15 +2,15 @@ package harego
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
-	"github.com/blokur/harego/v2/internal"
 	"github.com/bombsimon/logrusr/v4"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
+
+	"github.com/blokur/harego/v2/internal"
 )
 
 // rabbitWrapper is defined to make it easy for passing a mocked connection.
@@ -19,6 +19,8 @@ type rabbitWrapper struct {
 }
 
 // Channel returns the underlying channel.
+//
+//nolint:ireturn // This is a wrapper around connection.Channel
 func (r *rabbitWrapper) Channel() (Channel, error) {
 	return r.Connection.Channel() //nolint:wrapcheck // Okay here.
 }
@@ -34,28 +36,31 @@ func URLConnector(url string) Connector {
 		if err != nil {
 			return nil, fmt.Errorf("creating a connection to %q: %w", url, err)
 		}
+
 		return &rabbitWrapper{conn}, nil
 	}
 }
 
-// AMQPConnector uses r everytime the Client needs a new connection. You should
-// make sure r keep being alive.
-func AMQPConnector(r *amqp.Connection) Connector {
+// AMQPConnector uses the amqp connection everytime the Client needs a new connection. You should
+// make sure it is kept alive.
+func AMQPConnector(amqpConn *amqp.Connection) Connector {
 	return func() (RabbitMQ, error) {
-		if r.IsClosed() {
-			return nil, errors.New("connection is closed")
+		if amqpConn.IsClosed() {
+			return nil, fmt.Errorf("connection is closed: %w", amqp.ErrClosed)
 		}
-		return &rabbitWrapper{r}, nil
+
+		return &rabbitWrapper{amqpConn}, nil
 	}
 }
 
-// nolint:govet // most likely not an issue, but cleaner this way.
 type config struct {
 	workers      int
 	consumerName string
 	retryDelay   time.Duration
 	logger       logr.Logger
-	ctx          context.Context
+	ctx          context.Context //nolint:containedctx // Helps us know when the parent is shut down.
+
+	global bool
 
 	// queue properties.
 	queueName  string
@@ -82,15 +87,20 @@ type config struct {
 }
 
 func defaultConfig() *config {
+	const (
+		defaultChannelBufferSize = 10
+		defaultRetryDelay        = 100 * time.Millisecond
+	)
+
 	return &config{
 		exchName:     "default",
 		workers:      1,
-		chBuff:       10,
+		chBuff:       defaultChannelBufferSize,
 		exchType:     ExchangeTypeTopic,
 		deliveryMode: DeliveryModePersistent,
 		durable:      true,
 		consumerName: internal.GetRandomName(),
-		retryDelay:   100 * time.Millisecond,
+		retryDelay:   defaultRetryDelay,
 		logger:       logr.Discard(),
 		ctx:          context.Background(),
 	}
@@ -101,6 +111,7 @@ func (c *config) consumer() *Consumer {
 		workers:       c.workers,
 		consumerName:  c.consumerName,
 		retryDelay:    c.retryDelay,
+		global:        c.global,
 		queueName:     c.queueName,
 		routingKey:    c.routingKey,
 		exclusive:     c.exclusive,
@@ -319,5 +330,17 @@ func Context(ctx context.Context) ConfigFunc {
 func WithPanicHandler(h PanicHandler) ConfigFunc {
 	return func(c *config) {
 		c.panicHandler = h
+	}
+}
+
+// WithGlobal sets the global flag of the config. This flag controls the
+// Quality of Service (QoS) - which controls how many messages a consumer can be
+// fed before an acknowledgement is returned.
+// The default value for the global is: false.
+// Classic queues can use either true or false (or, rather, don't need to call this).
+// Quorum queues require WithGlobal(true).
+func WithGlobal(global bool) ConfigFunc {
+	return func(c *config) {
+		c.global = global
 	}
 }

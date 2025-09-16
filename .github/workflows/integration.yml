@@ -2,7 +2,7 @@ name: Continues Integration
 
 on:
   push:
-    branches: [master]
+    branches: [ master ]
   pull_request:
     branches:
       - master
@@ -15,21 +15,21 @@ jobs:
   test:
     strategy:
       matrix:
-        os: ["ubuntu-latest"]
-        go: [">=1.21.9", "1.22.x"]
+        os: [ "ubuntu-latest" ]
+        go: [ ">=1.25.0" ]
     name: Test with Go ${{ matrix.go }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go ${{ matrix.go }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
 
-      - uses: satackey/action-docker-layer-caching@v0.0.11
+      - uses: satackey/action-docker-layer-caching@v0
         continue-on-error: true
 
       - name: Tidy modules
@@ -42,15 +42,15 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: ["ubuntu-latest"]
-        go: [">=1.21.9", "1.22.x"]
+        os: [ "ubuntu-latest" ]
+        go: [ ">=1.25.0" ]
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go ${{ matrix.go }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
 
@@ -65,22 +65,19 @@ jobs:
       - name: WriteGoList
         run: go list -json -deps > go.list
 
-      - name: Nancy
-        uses: sonatype-nexus-community/nancy-github-action@main
-
   lint:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: ["ubuntu-latest"]
-        go: [">=1.21.9", "1.22.x"]
+        os: [ "ubuntu-latest" ]
+        go: [ ">=1.25.0" ]
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go ${{ matrix.go }}
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
 
@@ -88,6 +85,9 @@ jobs:
         run: go mod tidy
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
           args: --timeout 5m0s
+
+      - id: govulncheck
+        uses: golang/govulncheck-action@v1

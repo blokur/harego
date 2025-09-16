@@ -1,159 +1,112 @@
-linters-settings:
-  funlen:
-    lines: 100
-    statements: 50
-
-  cyclop:
-    skip-tests: true
-    max-complexity: 30
-    package-average: 5
-
-  gocyclo:
-    min-complexity: 15
-
-  goconst:
-    min-len: 2
-    min-occurrences: 3
-
-  gocritic:
-    enable-all: true
-
-  godot:
-    capital: true
-
-  gosimple:
-    checks: ["all"]
-
-  govet:
-    settings:
-      printf:
-        funcs:
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
-    disable-all: true
-    enable:
-      - assign
-      - atomic
-      - atomicalign
-      - bools
-      - buildtag
-      - cgocall
-      - composites
-      - copylocks
-      - deepequalerrors
-      - errorsas
-      - fieldalignment
-      - findcall
-      - framepointer
-      - httpresponse
-      - ifaceassert
-      - loopclosure
-      - lostcancel
-      - nilfunc
-      - printf
-      - reflectvaluecompare
-      - shift
-      - sigchanyzer
-      - sortslice
-      - stdmethods
-      - stringintconv
-      - structtag
-      - testinggoroutine
-      - tests
-      - unmarshal
-      - unreachable
-      - unsafeptr
-      - unusedresult
-
-  misspell:
-    locale: UK
-
-  staticcheck:
-    checks: ["all"]
-
-  stylecheck:
-    checks: ["all"]
-
-  unparam:
-    check-exported: true
-
-  wrapcheck:
-    ignoreSigs:
-      - .Errorf(
-      - errors.New(
-      - errors.Unwrap(
-      - errors.Join(
-      - .Wrap(
-      - .Wrapf(
-      - .WithMessage(
-      - .WithMessagef(
-      - .WithStack(
-      - (context.Context).Err()
-
-  nlreturn:
-    block-size: 2
-
-issues:
-  # Excluding configuration per-path, per-linter, per-text and per-source
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - contextcheck
-        - dupl
-        - errcheck
-        - funlen
-        - gochecknoinits
-        - goconst
-        - gocritic
-        - gosec
-        - govet
-        - lll
-        - nlreturn
-        - nosprintfhostport
-        - revive
-        - testifylint
-        - unparam
-        - wrapcheck
-    - path: mocks
-      linters:
-        - lll
-        - revive
-        - stylecheck
-    - path: docs.go
-      linters:
-        - dupword
-  exclude-dirs:
-    - model
-    - tmp
-    - bin
-    - scripts
-  fix: true
-  exclude-use-default: false
-
+version: "2"
 run:
-  timeout: 5m
-  allow-parallel-runners: true
-  tests: true
   build-tags:
     - integration
-
+  tests: true
+  allow-parallel-runners: true
 linters:
-  enable-all: true
+  default: all
   disable:
-    - containedctx # We need to use internal contexts.
-    - depguard # because I don't want to write a dedicated config file.
-    - err113 # We do not like its style.
-    - exhaustive # Is very strict.
-    - exhaustruct # I want to use zero values... and sometime leave a field uninitialised, because it'll be later.
-    - gochecknoglobals # We rely on globals.
-    - ireturn # We need to use them in logs.
-    - nlreturn
-    - gomnd # We have magic numbers.
-    - mnd # Same as gomnd.
-    - nolintlint # Sometimes we want to disable linters in specific places.
-    - nonamedreturns # Conflicts with paramTypeCombine.
-    - paralleltest # Full of false-positives.
-    - varnamelen # Very strict.
-    - wsl # Too restrictive for this project (maybe in the future).
+    - depguard # As much as I would like to use this, it is completely unmanageable.
+    - exhaustruct # This lib is usually pointless.
+  settings:
+    cyclop:
+      max-complexity: 30
+      package-average: 5
+    funlen:
+      lines: 100
+      statements: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 3
+    gocritic:
+      enable-all: true
+    gocyclo:
+      min-complexity: 15
+    godot:
+      capital: true
+    govet:
+      settings:
+        printf:
+          funcs:
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
+            - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
+    misspell:
+      locale: UK
+    nlreturn:
+      block-size: 2
+    staticcheck:
+      checks:
+        - all
+    unparam:
+      check-exported: true
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Unwrap(
+        - errors.Join(
+        - .Wrap(
+        - .Wrapf(
+        - .WithMessage(
+        - .WithMessagef(
+        - .WithStack(
+        - (context.Context).Err()
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - err113
+          - errcheck
+          - gochecknoinits # I'm OK with inits for tests.
+          - gocritic # Some of these are actually correct and should not be ignored / changed.
+          - gosec # Some errors I tried to fix, others (such as forcing crypto/rand) make no sense.
+          - testifylint # I tried to remove a few of them.
+          - wrapcheck
+        path: _test\.go
+      - linters:
+          - lll
+          - revive
+          - staticcheck
+        path: mocks
+      - linters:
+          - dupword
+        path: docs.go
+      - linters:
+          - cyclop
+        path: (.+)_test\.go
+    paths:
+      - model
+      - tmp
+      - bin
+      - scripts
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  fix: false
+formatters:
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/blokur)
+        - localmodule
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - model
+      - tmp
+      - bin
+      - scripts
+      - third_party$
+      - builtin$
+      - examples$

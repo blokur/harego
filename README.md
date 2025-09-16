@@ -7,18 +7,18 @@ High-level library on top of [amqp][amqp].
 ![Harego](https://media.giphy.com/media/uNNsPzWVFzfuE/giphy.gif)
 
 1. [Description](#description)
-   - [Note](#note)
+    - [Note](#note)
 2. [Usage](#usage)
-   - [Consumer](#consumer)
-   - [Publisher](#publisher)
-   - [Delays](#delays)
-   - [Requeueing](#requeueing)
+    - [Consumer](#consumer)
+    - [Publisher](#publisher)
+    - [Delays](#delays)
+    - [Requeueing](#requeueing)
 3. [Development](#development)
-   - [Prerequisite](#prerequisite)
-   - [Running Tests](#running-tests)
-   - [Make Examples](#make-examples)
-   - [Mocks](#mocks)
-   - [RabbitMQ](#rabbitmq)
+    - [Prerequisite](#prerequisite)
+    - [Running Tests](#running-tests)
+    - [Make Examples](#make-examples)
+    - [Mocks](#mocks)
+    - [RabbitMQ](#rabbitmq)
 
 ## Description
 
@@ -200,5 +200,7 @@ make integration_deps
 ```
 
 [reflex]: https://github.com/cespare/reflex
+
 [amqp]: https://github.com/rabbitmq/amqp091-go
+
 [asdf]: https://github.com/asdf-vm/asdf

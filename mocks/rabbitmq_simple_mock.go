@@ -11,10 +11,13 @@ type RabbitMQSimple struct {
 }
 
 // Channel mocks the RabbitMQ.Channel() method.
+//
+//nolint:ireturn // This is the RabbitMQ interface.
 func (r *RabbitMQSimple) Channel() (harego.Channel, error) {
 	if r.ChannelFunc != nil {
 		return r.ChannelFunc()
 	}
+
 	return &ChannelSimple{}, nil
 }
 
@@ -23,5 +26,6 @@ func (r *RabbitMQSimple) Close() error {
 	if r.CloseFunc != nil {
 		return r.CloseFunc()
 	}
+
 	return nil
 }

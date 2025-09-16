@@ -7,6 +7,7 @@ import (
 
 // stolen from "github.com/docker/docker/pkg/namesgenerator"
 
+//nolint:gochecknoglobals // This is simpler than having funcs that return the values. Also, these are only read.
 var (
 	left = [...]string{
 		"admiring",
@@ -363,6 +364,6 @@ var (
 // GetRandomName generates a random name from the list of adjectives and
 // surnames in this package formatted as "adjective_surname".
 func GetRandomName() string {
-	// nolint:gosec // it's not an operation critical seed.
+	//nolint:gosec // it's not an operation critical seed.
 	return fmt.Sprintf("%s_%s", left[rand.Intn(len(left))], right[rand.Intn(len(right))])
 }

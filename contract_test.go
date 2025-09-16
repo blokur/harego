@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/blokur/harego/v2"
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"github.com/blokur/harego/v2"
 )
 
 // ExampleHandlerFunc_ack instructs the consumer to drop the message
@@ -15,6 +16,7 @@ func ExampleHandlerFunc_ack() {
 		// logic for working with msg.Body goes here.
 		return harego.AckTypeAck, 0
 	}
+
 	got, delay := fn(&amqp.Delivery{})
 	fmt.Printf("Got %s and will delay for %s", got, delay)
 
@@ -30,6 +32,7 @@ func ExampleHandlerFunc_reject() {
 		// logic for working with msg.Body goes here.
 		return harego.AckTypeReject, 100 * time.Millisecond
 	}
+
 	got, delay := fn(&amqp.Delivery{})
 	fmt.Printf("Got %s and will delay for %s", got, delay)
 
@@ -44,6 +47,7 @@ func ExampleHandlerFunc_requeue() {
 		// logic for working with msg.Body goes here.
 		return harego.AckTypeRequeue, time.Second
 	}
+
 	got, delay := fn(&amqp.Delivery{})
 	fmt.Printf("Got %s and will delay for %s", got, delay)
 
