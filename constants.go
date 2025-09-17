@@ -59,7 +59,7 @@ func (e ExchangeType) IsValid() bool {
 }
 
 func (e ExchangeType) String() string {
-	switch e {
+	switch e { //nolint:exhaustive // I don't want to panic here.
 	case ExchangeTypeDirect:
 		return "direct"
 	case ExchangeTypeFanout:
@@ -69,6 +69,7 @@ func (e ExchangeType) String() string {
 	case ExchangeTypeHeaders:
 		return "headers"
 	}
+
 	return ""
 }
 

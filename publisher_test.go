@@ -7,13 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/mocks"
-	"github.com/blokur/testament"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+
+	"github.com/blokur/testament"
+
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/mocks"
 )
 
 func TestNewPublisher(t *testing.T) {
@@ -25,10 +27,11 @@ func TestNewPublisher(t *testing.T) {
 
 func testNewPublisherBadInput(t *testing.T) {
 	t.Parallel()
+
 	conn := func() (harego.RabbitMQ, error) {
 		return &mocks.RabbitMQ{}, nil
 	}
-	tcs := []struct {
+	testCases := []struct {
 		msg  string
 		conf []harego.ConfigFunc
 	}{
@@ -46,15 +49,14 @@ func testNewPublisherBadInput(t *testing.T) {
 		}},
 	}
 
-	for i, tc := range tcs {
-		tc := tc
-		name := fmt.Sprintf("%d_%s", i, tc.msg)
+	for i, testCase := range testCases {
+		name := fmt.Sprintf("%d_%s", i, testCase.msg)
 		t.Run(name, func(t *testing.T) {
 			_, err := harego.NewPublisher(conn,
-				tc.conf...,
+				testCase.conf...,
 			)
 			require.Error(t, err)
-			assert.Contains(t, err.Error(), tc.msg)
+			assert.Contains(t, err.Error(), testCase.msg)
 		})
 	}
 
@@ -81,16 +83,16 @@ func testNewPublisherChannel(t *testing.T) {
 
 func testNewPublisherExchangeDeclare(t *testing.T) {
 	t.Parallel()
-	r := mocks.NewRabbitMQ(t)
+	rabbitCli := mocks.NewRabbitMQ(t)
 	ch := mocks.NewChannel(t)
 
-	r.On("Channel").Return(ch, nil).Once()
-	r.On("Close").Return(nil).Once()
+	rabbitCli.On("Channel").Return(ch, nil).Once()
+	rabbitCli.On("Close").Return(nil).Once()
 	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
+	_, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return rabbitCli, nil })
 	testament.AssertInError(t, err, assert.AnError)
 }
 
@@ -108,21 +110,22 @@ func testPublisherPublish(t *testing.T) {
 
 func testPublisherPublishAlreadyClosed(t *testing.T) {
 	t.Parallel()
-	r := mocks.NewRabbitMQ(t)
-	ch := mocks.NewChannel(t)
+	rabbitCli := mocks.NewRabbitMQ(t)
+	channel := mocks.NewChannel(t)
 
-	r.On("Channel").Return(ch, nil).Once()
-	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	rabbitCli.On("Channel").Return(channel, nil).Once()
+	channel.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("NotifyClose", mock.Anything).
+	channel.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
 
-	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
+	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return rabbitCli, nil })
 	require.NoError(t, err)
 
-	ch.On("Close").Return(nil).Once()
-	r.On("Close").Return(nil).Once()
+	channel.On("Close").Return(nil).Once()
+	rabbitCli.On("Close").Return(nil).Once()
+
 	err = pub.Close()
 	require.NoError(t, err)
 
@@ -132,15 +135,15 @@ func testPublisherPublishAlreadyClosed(t *testing.T) {
 
 func testPublisherPublishPublishError(t *testing.T) {
 	t.Parallel()
-	r := mocks.NewRabbitMQ(t)
-	ch := mocks.NewChannel(t)
+	rabbitCli := mocks.NewRabbitMQ(t)
+	channel := mocks.NewChannel(t)
 
-	r.On("Channel").Return(ch, nil).Once()
+	rabbitCli.On("Channel").Return(channel, nil).Once()
 
 	exchName := testament.RandomString(10)
 	exchType := harego.ExchangeTypeFanout
 
-	ch.On("ExchangeDeclare",
+	channel.On("ExchangeDeclare",
 		mock.MatchedBy(func(name string) bool {
 			assert.Contains(t, name, exchName)
 			return true
@@ -149,10 +152,10 @@ func testPublisherPublishPublishError(t *testing.T) {
 		true, true, true, true, mock.Anything,
 	).Return(nil).Once()
 
-	ch.On("NotifyClose", mock.Anything).
+	channel.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
 
-	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil },
+	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.ExchangeName(exchName),
 		harego.WithExchangeType(exchType),
 		harego.AutoDelete,
@@ -161,7 +164,7 @@ func testPublisherPublishPublishError(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	ch.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	channel.On("Publish", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
 	err = pub.Publish(&amqp.Publishing{})
@@ -178,21 +181,22 @@ func testPublisherClose(t *testing.T) {
 
 func testPublisherCloseAlreadyClosed(t *testing.T) {
 	t.Parallel()
-	r := mocks.NewRabbitMQ(t)
-	ch := mocks.NewChannel(t)
+	rabbitCli := mocks.NewRabbitMQ(t)
+	channel := mocks.NewChannel(t)
 
-	r.On("Channel").Return(ch, nil).Once()
-	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	rabbitCli.On("Channel").Return(channel, nil).Once()
+	channel.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Once()
-	ch.On("NotifyClose", mock.Anything).
+	channel.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Once()
 
-	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
+	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return rabbitCli, nil })
 	require.NoError(t, err)
 
-	ch.On("Close").Return(nil)
-	r.On("Close").Return(nil)
+	channel.On("Close").Return(nil)
+	rabbitCli.On("Close").Return(nil)
+
 	err = pub.Close()
 	require.NoError(t, err)
 
@@ -202,10 +206,11 @@ func testPublisherCloseAlreadyClosed(t *testing.T) {
 
 func testPublisherCloseErrors(t *testing.T) {
 	t.Parallel()
+
 	err1 := errors.New(testament.RandomString(10))
 	err2 := errors.New(testament.RandomString(10))
 
-	tcs := map[string]struct {
+	testCases := map[string]struct {
 		channelErr error
 		connErr    error
 		wantErrs   []error
@@ -216,28 +221,28 @@ func testPublisherCloseErrors(t *testing.T) {
 		"both errors": {err1, err2, []error{err1, err2}},
 	}
 
-	for name, tc := range tcs {
-		tc := tc
+	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			r := mocks.NewRabbitMQ(t)
-			ch := mocks.NewChannel(t)
+			rabbitCli := mocks.NewRabbitMQ(t)
+			channel := mocks.NewChannel(t)
 
-			r.On("Channel").Return(ch, nil).Once()
-			ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			rabbitCli.On("Channel").Return(channel, nil).Once()
+			channel.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				mock.Anything, mock.Anything, mock.Anything).
 				Return(nil).Once()
-			ch.On("NotifyClose", mock.Anything).
+			channel.On("NotifyClose", mock.Anything).
 				Return(make(chan *amqp.Error, 10)).Once()
 
-			pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return r, nil })
+			pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) { return rabbitCli, nil })
 			require.NoError(t, err)
 
-			ch.On("Close").Return(tc.channelErr)
-			r.On("Close").Return(tc.connErr)
+			channel.On("Close").Return(testCase.channelErr)
+			rabbitCli.On("Close").Return(testCase.connErr)
+
 			err = pub.Close()
 
-			for _, e := range tc.wantErrs {
+			for _, e := range testCase.wantErrs {
 				testament.AssertInError(t, err, e)
 			}
 		})
@@ -246,6 +251,7 @@ func testPublisherCloseErrors(t *testing.T) {
 
 func testPublisherCloseMultipleTimes(t *testing.T) {
 	t.Parallel()
+
 	pub, err := harego.NewPublisher(func() (harego.RabbitMQ, error) {
 		return &mocks.RabbitMQSimple{}, nil
 	})
@@ -253,7 +259,8 @@ func testPublisherCloseMultipleTimes(t *testing.T) {
 
 	err = pub.Close()
 	require.NoError(t, err)
-	for i := 0; i < 100; i++ {
+
+	for range 100 {
 		err = pub.Close()
 		testament.AssertInError(t, err, harego.ErrClosed)
 	}
@@ -261,6 +268,7 @@ func testPublisherCloseMultipleTimes(t *testing.T) {
 
 func testPublisherClosePublishNotPanic(t *testing.T) {
 	t.Parallel()
+
 	r := &mocks.RabbitMQSimple{}
 
 	total := 100
@@ -269,11 +277,13 @@ func testPublisherClosePublishNotPanic(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	var wg sync.WaitGroup
-	for i := 0; i < total-1; i++ {
-		wg.Add(1)
+	var wGroup sync.WaitGroup
+	for range total - 1 {
+		wGroup.Add(1)
+
 		go func() {
-			defer wg.Done()
+			defer wGroup.Done()
+
 			assert.NotPanics(t, func() {
 				pub.Publish(&amqp.Publishing{})
 			})
@@ -283,7 +293,7 @@ func testPublisherClosePublishNotPanic(t *testing.T) {
 	err = pub.Close()
 	require.NoError(t, err)
 	assert.Eventually(t, func() bool {
-		wg.Wait()
+		wGroup.Wait()
 		return true
 	}, 120*time.Second, 10*time.Millisecond)
 }

@@ -11,17 +11,19 @@ import (
 	"time"
 
 	"github.com/arsham/retry/v2"
-	"github.com/blokur/harego/v2"
-	"github.com/blokur/harego/v2/mocks"
-	"github.com/blokur/testament"
+	"github.com/containers/storage/pkg/ioutils"
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/pkg/ioutils"
 	"github.com/go-logr/logr"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
+
+	"github.com/blokur/testament"
+
+	"github.com/blokur/harego/v2"
+	"github.com/blokur/harego/v2/mocks"
 )
 
 func randomBody(lines int) string {
@@ -29,40 +31,56 @@ func randomBody(lines int) string {
 	for i := range body {
 		body[i] = testament.RandomString(rand.Intn(100) + 10)
 	}
+
 	return strings.Join(body, "\n")
 }
 
-var r = &retry.Retry{
+//nolint:gochecknoglobals // This is a retry configuration for our tests
+var retryConfig = &retry.Retry{
 	Attempts: 20,
 	Delay:    300 * time.Millisecond,
 }
 
 func init() {
 	// If you faced with any issues setting up containers, comment this out:
-	testcontainers.Logger = log.New(&ioutils.NopWriter{}, "", 0)
+	testcontainers.WithLogger(log.New(&ioutils.NopWriter{}, "", 0))
 }
 
 // getConsumerPublisher returns a pair of consumer and publisher. What
 // publisher sends to the exchange, the consumer will receive. If the queueName
 // is empty, a random queueName is picked. It tries to get a new container if
 // there was an error.
-func getConsumerPublisher(t *testing.T, exchange, queueName string, conf ...harego.ConfigFunc) (cons *harego.Consumer, pub *harego.Publisher) {
+func getConsumerPublisher(
+	t *testing.T,
+	exchange, queueName string,
+	conf ...harego.ConfigFunc,
+) (*harego.Consumer, *harego.Publisher) {
 	t.Helper()
+
 	var (
-		addr string
-		c    testcontainers.Container
-		ctx  = context.Background()
+		addr  string
+		ctner testcontainers.Container
+		cons  *harego.Consumer
+		pub   *harego.Publisher
 	)
-	err := r.Do(func() error {
+
+	ctx := t.Context()
+
+	err := retryConfig.Do(func() error {
 		var err error
-		c, addr = getContainer(t)
+
+		//nolint:contextcheck // See func documentation.
+		ctner, addr = getContainer(t)
+
 		cons, pub, err = getConsumerPublisherWithAddr(t, addr, exchange, queueName, conf...)
 		if err != nil {
-			c.Terminate(ctx)
+			ctner.Terminate(ctx)
 			cons.Close()
 			pub.Close()
+
 			return err
 		}
+
 		return nil
 	})
 	require.NoError(t, err)
@@ -74,9 +92,15 @@ func getConsumerPublisher(t *testing.T, exchange, queueName string, conf ...hare
 // connecting to a broker at the given address. What publisher sends to the
 // exchange, the consumer will receive. If the queueName is empty, a random
 // queueName is picked.
-func getConsumerPublisherWithAddr(t *testing.T, addr, exchange, queueName string, conf ...harego.ConfigFunc) (*harego.Consumer, *harego.Publisher, error) {
+func getConsumerPublisherWithAddr(
+	t *testing.T,
+	addr, exchange, queueName string,
+	conf ...harego.ConfigFunc,
+) (*harego.Consumer, *harego.Publisher, error) {
 	t.Helper()
+
 	var err error
+
 	if queueName == "" {
 		queueName = testament.RandomLowerString(20)
 	}
@@ -91,30 +115,36 @@ func getConsumerPublisherWithAddr(t *testing.T, addr, exchange, queueName string
 		cons *harego.Consumer
 	)
 
-	err = r.Do(func() error {
+	err = retryConfig.Do(func() error {
 		var err error
+
 		pub, err = harego.NewPublisher(harego.URLConnector(addr),
 			conf...,
 		)
+
 		return err
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+
 	t.Cleanup(func() {
 		pub.Close()
 	})
 
-	err = r.Do(func() error {
+	err = retryConfig.Do(func() error {
 		var err error
+
 		cons, err = harego.NewConsumer(harego.URLConnector(addr),
 			conf...,
 		)
+
 		return err
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+
 	t.Cleanup(func() {
 		cons.Close()
 	})
@@ -124,12 +154,15 @@ func getConsumerPublisherWithAddr(t *testing.T, addr, exchange, queueName string
 
 // getContainer returns a new container running rabbimq that is ready for
 // accepting connections.
-func getContainer(t *testing.T) (testcontainers.Container, string) {
+// Nota: This func should NOT inherit the context. Indeed, the container needs to be independent of the parent caller.
+func getContainer(t *testing.T) (*rabbitmq.RabbitMQContainer, string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 	defer cancel()
-	rabbitmqContainer, err := rabbitmq.RunContainer(ctx,
-		testcontainers.WithImage("rabbitmq:3.13-management-alpine"),
+
+	rabbitmqContainer, err := rabbitmq.Run(ctx,
+		"rabbitmq:4.1-management-alpine",
 		rabbitmq.WithAdminUsername("guest"),
 		rabbitmq.WithAdminPassword("guest"),
 		testcontainers.WithHostConfigModifier(func(c *container.HostConfig) {
@@ -145,6 +178,7 @@ func getContainer(t *testing.T) (testcontainers.Container, string) {
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+
 		err := rabbitmqContainer.Terminate(ctx)
 		require.NoError(t, err)
 	})
@@ -156,11 +190,14 @@ func getContainer(t *testing.T) (testcontainers.Container, string) {
 }
 
 // restartRabbitMQ restarts the rabbitmq server inside the container.
-func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
+// Nota: This func should NOT inherit the context. Indeed, the container needs to be independent of the parent caller.
+func restartRabbitMQ(t *testing.T, ctner testcontainers.Container) {
 	t.Helper()
+
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	_, _, err := container.Exec(ctx, []string{
+
+	_, _, err := ctner.Exec(ctx, []string{
 		"rabbitmqctl",
 		"stop_app",
 	})
@@ -169,7 +206,8 @@ func restartRabbitMQ(t *testing.T, container testcontainers.Container) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		container.Exec(ctx, []string{
+
+		ctner.Exec(ctx, []string{
 			"rabbitmqctl",
 			"start_app",
 		})
@@ -193,13 +231,16 @@ func (s *sink) Error(err error, _ string, _ ...any) {
 	s.errors = append(s.errors, err)
 }
 
+//nolint:ireturn // s implements logr.LogSink
 func (s *sink) WithValues(kv ...any) logr.LogSink {
 	for i := 0; i < len(kv); i += 2 {
 		s.values[kv[i]] = kv[i+1]
 	}
+
 	return s
 }
 
+//nolint:ireturn // s implements logr.LogSink
 func (s *sink) WithName(string) logr.LogSink { return s }
 
 type mockLogger struct {
@@ -208,12 +249,13 @@ type mockLogger struct {
 }
 
 func newMockLogger() *mockLogger {
-	s := &sink{
+	snk := &sink{
 		values: make(map[any]any),
 	}
+
 	return &mockLogger{
-		sink:   s,
-		logger: logr.New(s),
+		sink:   snk,
+		logger: logr.New(snk),
 	}
 }
 
@@ -225,11 +267,13 @@ func (m *mockLogger) isInError(t *testing.T, err error) {
 			return
 		}
 	}
+
 	for _, needle := range m.sink.errors {
 		if strings.Contains(needle.Error(), err.Error()) {
 			return
 		}
 	}
+
 	t.Errorf("expected error %v to be in %v", err, m.sink.errors)
 }
 
@@ -243,6 +287,7 @@ func (a *acknowledger) Ack(tag uint64, multiple bool) error {
 	if a.ackFunc != nil {
 		return a.ackFunc(tag, multiple)
 	}
+
 	return nil
 }
 
@@ -250,6 +295,7 @@ func (a *acknowledger) Nack(tag uint64, multiple, requeue bool) error {
 	if a.nackFunc != nil {
 		return a.nackFunc(tag, multiple, requeue)
 	}
+
 	return nil
 }
 
@@ -257,40 +303,45 @@ func (a *acknowledger) Reject(tag uint64, multiple bool) error {
 	if a.rejectFunc != nil {
 		return a.rejectFunc(tag, multiple)
 	}
+
 	return nil
 }
 
 // getPassingChannel returns a mock of the amqp.Channel interface that has
 // messages in it's queue.
+//
+//nolint:unparam // Maybe we'll need various values later.
 func getPassingChannel(t *testing.T, messages int) *mocks.Channel {
 	t.Helper()
-	ch := mocks.NewChannel(t)
-	ch.On("Qos", mock.Anything, mock.Anything, mock.Anything).
+	channel := mocks.NewChannel(t)
+	channel.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Maybe()
-	ch.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	channel.On("ExchangeDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Maybe()
-	ch.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+	channel.On("QueueDeclare", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).
 		Return(amqp.Queue{}, nil).Maybe()
-	ch.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+	channel.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Maybe()
-	ch.On("NotifyClose", mock.Anything).
+	channel.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10)).Maybe()
 
 	delivery := make(chan amqp.Delivery, messages)
-	for i := 0; i < messages; i++ {
+	for i := range messages {
 		delivery <- amqp.Delivery{
 			Acknowledger: &acknowledger{},
 			Body:         []byte(fmt.Sprintf("message #%d", i)),
 		}
 	}
-	ch.On("Consume", mock.Anything, mock.Anything, mock.Anything,
+
+	channel.On("Consume", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return((<-chan amqp.Delivery)(delivery), nil).Maybe()
-	ch.On("Publish", mock.Anything, mock.Anything, mock.Anything,
+	channel.On("Publish", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything).
 		Return(nil).Maybe()
-	ch.On("Close").Return(nil).Maybe()
-	return ch
+	channel.On("Close").Return(nil).Maybe()
+
+	return channel
 }

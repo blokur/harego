@@ -17,7 +17,6 @@ import (
 // It creates multiple workers for safe communication. Zero value is not
 // usable, therefore you should construct a usable Consumer by calling the
 // NewConsumer constructor.
-// nolint:govet // most likely not an issue, but cleaner this way.
 type Consumer struct {
 	connector    Connector
 	workers      int
@@ -31,6 +30,8 @@ type Consumer struct {
 	channel Channel
 	queue   amqp.Queue
 	msgs    <-chan amqp.Delivery // for cleaning up
+
+	global bool
 
 	// queue properties.
 	queueName  string
@@ -55,7 +56,7 @@ type Consumer struct {
 	chBuff    int
 	consumeCh chan amqp.Delivery // used for consuming messages and setup Consume loop.
 	once      sync.Once
-	ctx       context.Context // for turning off the Consumer.
+	ctx       context.Context //nolint:containedctx // for turning off the Consumer.
 	cancel    func()
 	closed    bool
 
@@ -74,55 +75,59 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 		fn(cnf)
 	}
 
-	c := cnf.consumer()
-	if c.chBuff == 0 {
-		c.chBuff = 1
+	consumer := cnf.consumer()
+	if consumer.chBuff == 0 {
+		consumer.chBuff = 1
 	}
-	c.connector = connector
-	c.ctx, c.cancel = context.WithCancel(c.ctx)
 
-	if c.prefetchCount < c.workers {
-		c.prefetchCount = c.workers
+	consumer.connector = connector
+	consumer.ctx, consumer.cancel = context.WithCancel(consumer.ctx)
+
+	if consumer.prefetchCount < consumer.workers {
+		consumer.prefetchCount = consumer.workers
 	}
-	err := c.validate()
+
+	err := consumer.validate()
 	if err != nil {
 		return nil, fmt.Errorf("validating configuration: %w", err)
 	}
 
-	c.conn, err = c.connector()
+	consumer.conn, err = consumer.connector()
 	if err != nil {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
 
-	_, err = c.setupChannel()
+	_, err = consumer.setupChannel()
 	if err != nil {
 		return nil, fmt.Errorf("setting up a channel: %w", err)
 	}
 
-	c.publisher, err = NewPublisher(connector, conf...)
+	consumer.publisher, err = NewPublisher(connector, conf...)
 	if err != nil {
 		return nil, fmt.Errorf("setting up requeue: %w", err)
 	}
 
-	err = c.setupQueue()
+	err = consumer.setupQueue()
 	if err != nil {
 		return nil, fmt.Errorf("setting up a queue: %w", err)
 	}
 
-	c.registerReconnect(c.ctx)
-	c.logger = c.logger.
+	consumer.registerReconnect(consumer.ctx)
+	consumer.logger = consumer.logger.
 		WithName("consume").
-		WithName(c.exchName).
-		WithName(c.queueName)
+		WithName(consumer.exchName).
+		WithName(consumer.queueName)
 
-	if c.panicHandler == nil {
-		c.panicHandler = func(msg *amqp.Delivery, r any) (AckType, time.Duration) {
-			err := fmt.Errorf("panic: %v", r)
-			c.logger.WithValues("message_id", msg.MessageId).Error(err, string(debug.Stack()))
+	if consumer.panicHandler == nil {
+		consumer.panicHandler = func(msg *amqp.Delivery, r any) (AckType, time.Duration) {
+			err := fmt.Errorf("panic: %v", r) //nolint:err113 // We need to create an error out of an "any".
+			consumer.logger.WithValues("message_id", msg.MessageId).Error(err, string(debug.Stack()))
+
 			return AckTypeRequeue, time.Second
 		}
 	}
-	return c, nil
+
+	return consumer, nil
 }
 
 // Consume is a bloking call that passes each message to the handler and stops
@@ -134,6 +139,7 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 	if c.closed {
 		return ErrClosed
 	}
+
 	if handler == nil {
 		return ErrNilHnadler
 	}
@@ -141,29 +147,78 @@ func (c *Consumer) Consume(ctx context.Context, handler HandlerFunc) error {
 	c.mu.Lock()
 	c.ctx, c.cancel = context.WithCancel(ctx)
 	c.consumeCh = make(chan amqp.Delivery, c.workers*c.chBuff)
+
 	err := c.setupConsumeCh()
 	if err != nil {
 		c.mu.Unlock()
 		return fmt.Errorf("setting up consume process: %w", err)
 	}
+
 	c.mu.Unlock()
 
 	go func() {
 		<-c.ctx.Done()
+
 		c.mu.Lock()
 		defer c.mu.Unlock()
+
 		close(c.consumeCh)
 	}()
-	var wg sync.WaitGroup
-	wg.Add(c.workers)
-	for i := 0; i < c.workers; i++ {
+
+	var wGroup sync.WaitGroup
+
+	wGroup.Add(c.workers)
+
+	for range c.workers {
 		go func() {
-			defer wg.Done()
+			defer wGroup.Done()
+
 			c.consumeLoop(handler)
 		}()
 	}
-	wg.Wait()
+
+	wGroup.Wait()
+
 	return c.ctx.Err()
+}
+
+// Close closes the channel and the connection. A closed Consumer is not
+// usable.
+func (c *Consumer) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return ErrClosed
+	}
+
+	c.once.Do(func() {
+		c.closed = true
+		c.cancel()
+	})
+
+	var err error
+
+	if c.channel != nil && !reflect.ValueOf(c.channel).IsNil() {
+		er := c.channel.Close()
+		if er != nil {
+			err = fmt.Errorf("closing channel: %w", er)
+		}
+
+		c.channel = nil
+	}
+
+	if c.conn != nil {
+		er := c.conn.Close()
+		if er != nil {
+			er = fmt.Errorf("closing connection: %w", er)
+			err = errors.Join(err, er)
+		}
+
+		c.conn = nil
+	}
+
+	return err
 }
 
 func (c *Consumer) logErr(err error, msg, section string) {
@@ -173,18 +228,20 @@ func (c *Consumer) logErr(err error, msg, section string) {
 }
 
 func (c *Consumer) consumeLoop(handler HandlerFunc) {
-	h := func(msg *amqp.Delivery) (a AckType, delay time.Duration) {
+	//nolint:nonamedreturns // We set these values in the defer func.
+	safeHandler := func(msg *amqp.Delivery) (a AckType, delay time.Duration) {
 		defer func() {
 			if r := recover(); r != nil {
 				a, delay = c.panicHandler(msg, r)
 			}
 		}()
+
 		return handler(msg)
 	}
+
 	for msg := range c.consumeCh {
-		msg := msg
-		a, delay := h(&msg)
-		switch a {
+		a, delay := safeHandler(&msg)
+		switch a { //nolint:exhaustive // I have no idea of what to do when receiving something else.
 		case AckTypeAck:
 			time.Sleep(delay)
 			c.logErr(msg.Ack(false), "Ack message", "ack")
@@ -196,6 +253,7 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 			c.logErr(msg.Reject(false), "Reject message", "reject")
 		case AckTypeRequeue:
 			time.Sleep(delay)
+
 			err := c.publisher.Publish(&amqp.Publishing{
 				Body:            msg.Body,
 				Headers:         msg.Headers,
@@ -216,107 +274,103 @@ func (c *Consumer) consumeLoop(handler HandlerFunc) {
 				c.logErr(msg.Nack(false, true), "Requeue message", "publish")
 				continue
 			}
+
 			c.logErr(msg.Ack(false), "Ack message", "ack")
 		}
 	}
-}
-
-// Close closes the channel and the connection. A closed Consumer is not
-// usable.
-// nolint:dupl // They are quite different.
-func (c *Consumer) Close() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return ErrClosed
-	}
-
-	c.once.Do(func() {
-		c.closed = true
-		c.cancel()
-	})
-	var err error
-	if c.channel != nil && !reflect.ValueOf(c.channel).IsNil() {
-		er := c.channel.Close()
-		if er != nil {
-			err = fmt.Errorf("closing channel: %w", er)
-		}
-		c.channel = nil
-	}
-	if c.conn != nil {
-		er := c.conn.Close()
-		if er != nil {
-			er = fmt.Errorf("closing connection: %w", er)
-			err = errors.Join(err, er)
-		}
-		c.conn = nil
-	}
-	return err
 }
 
 func (c *Consumer) validate() error {
 	if c.connector == nil {
 		return fmt.Errorf("empty connection function (Connector): %w", ErrInput)
 	}
+
 	if c.workers < 1 {
 		return fmt.Errorf("not enough workers: %d: %w", c.workers, ErrInput)
 	}
+
 	if c.consumerName == "" {
 		return fmt.Errorf("empty consumer name: %w", ErrInput)
 	}
+
 	if c.queueName == "" {
 		return fmt.Errorf("empty queue name: %w", ErrInput)
 	}
+
 	if c.exchName == "" {
 		return fmt.Errorf("empty exchange name: %w", ErrInput)
 	}
+
 	if c.prefetchCount < 1 {
 		return fmt.Errorf("not enough prefetch count: %d: %w", c.prefetchCount, ErrInput)
 	}
+
 	if c.prefetchSize < 0 {
 		return fmt.Errorf("not enough prefetch size: %d: %w", c.prefetchSize, ErrInput)
 	}
+
 	if !c.deliveryMode.IsValid() {
 		return fmt.Errorf("delivery mode: %q: %w", c.deliveryMode.String(), ErrInput)
 	}
+
 	return nil
 }
 
 func (c *Consumer) registerReconnect(ctx context.Context) {
 	c.mu.RLock()
+
 	if c.closed {
 		c.mu.RUnlock()
 		return
 	}
+
 	c.mu.RUnlock()
-	ch := c.channel.NotifyClose(make(chan *amqp.Error, 2))
+
+	const errChanSize = 2
+
+	channel := c.channel.NotifyClose(make(chan *amqp.Error, errChanSize))
+
 	go func() {
 		select {
 		case <-ctx.Done():
 			return
-		case err := <-ch:
-			c.logger.Info("closed consumer", "err", err)
+		case err := <-channel:
+			c.logger.Info("closed consumer", "err", func() string {
+				if err != nil {
+					return err.Error()
+				}
+
+				return ""
+			}())
 			c.mu.Lock()
+
 			if c.closed {
 				c.mu.Unlock()
 				return
 			}
+
 			if c.msgs != nil {
 				// We should clean up the channel otherwise it will block on other
 				// channels reading from the same connection.
 				for range c.msgs { //nolint:revive // this is on purpose.
 				}
 			}
+
 			if c.channel != nil {
 				c.logErr(c.channel.Close(), "Closing channel", "channel")
 				c.channel = nil
 			}
+
 			if c.conn != nil {
 				c.logErr(c.conn.Close(), "Closing connection", "connection")
 				c.conn = nil
 			}
+
 			c.mu.Unlock()
 			c.keepConnecting()
+
+			c.logger.Info("reconnected")
+
 			go c.registerReconnect(ctx)
 		}
 	}()
@@ -326,47 +380,60 @@ func (c *Consumer) keepConnecting() {
 	// In each step we create a connection, we want to clean up if any of the
 	// consequent step fails.
 	type cleanup map[string]func() error
+
 	var cleanups []cleanup
+
 	for {
 		for _, cln := range cleanups {
 			for section, fn := range cln {
 				c.logErr(fn(), "Cleaning up", section)
 			}
 		}
-		cleanups = make([]cleanup, 0, 2)
+
+		const expectedCleanupCount = 2
+
+		cleanups = make([]cleanup, 0, expectedCleanupCount)
+
 		time.Sleep(c.retryDelay)
 		c.mu.RLock()
+
 		if c.closed {
 			c.mu.RUnlock()
 			return
 		}
+
 		c.mu.RUnlock()
 
-		cl, err := c.dial()
+		dialCleanup, err := c.dial()
 		if err != nil {
-			c.logger.V(1).Info("dial up", "err", err)
+			c.logger.V(1).Info("dial up", "err", err.Error())
 			continue
 		}
-		cleanups = append(cleanups, cleanup{"dial": cl})
 
-		cl, err = c.setupChannel()
+		cleanups = append(cleanups, cleanup{"dial": dialCleanup})
+
+		channelCleanup, err := c.setupChannel()
 		if err != nil {
-			c.logger.V(1).Info("setting up a channel", "err", err)
+			c.logger.V(1).Info("setting up a channel", "err", err.Error())
 			continue
 		}
-		cleanups = append(cleanups, cleanup{"channel": cl})
+
+		cleanups = append(cleanups, cleanup{"channel": channelCleanup})
 
 		err = c.setupQueue()
 		if err != nil {
-			c.logger.V(1).Info("setting up the queue", "err", err)
+			c.logger.V(1).Info("setting up the queue", "err", err.Error())
 			continue
 		}
+
 		err = c.setupConsumeCh()
 		if err != nil {
-			c.logger.V(1).Info("setting up the consumer channel", "err", err)
+			c.logger.V(1).Info("setting up the consumer channel", "err", err.Error())
 			continue
 		}
+
 		c.logger.Info("Reconnected consumer")
+
 		return
 	}
 }
@@ -376,30 +443,36 @@ func (c *Consumer) dial() (func() error, error) {
 	if c.conn != nil {
 		return func() error { return nil }, nil
 	}
+
 	conn, err := c.connector()
 	if err != nil {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
+
 	c.conn = conn
+
 	return conn.Close, nil
 }
 
 func (c *Consumer) setupChannel() (func() error, error) {
 	var err error
+
 	c.channel, err = c.conn.Channel()
 	if err != nil {
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 	// to make sure rabbitmq is fair on workers.
-	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, true)
+	err = c.channel.Qos(c.prefetchCount, c.prefetchSize, c.global)
 	if err != nil {
 		return nil, fmt.Errorf("setting Qos: %w", err)
 	}
+
 	return c.channel.Close, nil
 }
 
 func (c *Consumer) setupQueue() error {
 	var err error
+
 	c.queue, err = c.channel.QueueDeclare(
 		c.queueName,
 		c.durable,
@@ -411,6 +484,7 @@ func (c *Consumer) setupQueue() error {
 	if err != nil {
 		return fmt.Errorf("declaring queue: %w", err)
 	}
+
 	err = c.channel.QueueBind(
 		c.queueName,
 		c.routingKey,
@@ -421,6 +495,7 @@ func (c *Consumer) setupQueue() error {
 	if err != nil {
 		return fmt.Errorf("binding queue: %w", err)
 	}
+
 	return nil
 }
 
@@ -428,7 +503,9 @@ func (c *Consumer) setupConsumeCh() error {
 	if c.consumeCh == nil {
 		return nil
 	}
+
 	var err error
+
 	c.msgs, err = c.channel.Consume(
 		c.queueName,
 		c.consumerName,
@@ -441,6 +518,7 @@ func (c *Consumer) setupConsumeCh() error {
 	if err != nil {
 		return fmt.Errorf("getting consume channel: %w", err)
 	}
+
 	go func() {
 		for msg := range c.msgs {
 			select {
@@ -448,10 +526,14 @@ func (c *Consumer) setupConsumeCh() error {
 				return
 			default:
 			}
+
 			c.mu.Lock()
+
 			c.consumeCh <- msg
+
 			c.mu.Unlock()
 		}
 	}()
+
 	return nil
 }

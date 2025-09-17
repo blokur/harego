@@ -14,7 +14,6 @@ import (
 // Publisher is a concurrent safe construct for publishing a message to exchanges,
 // and consuming messages from queues. It creates multiple workers for safe
 // communication. Zero value is not usable.
-// nolint:govet // most likely not an issue, but cleaner this way.
 type Publisher struct {
 	connector  Connector
 	workers    int
@@ -46,7 +45,7 @@ type Publisher struct {
 	chBuff int
 	pubCh  chan *publishMsg
 	once   sync.Once
-	ctx    context.Context // for turning off the client.
+	ctx    context.Context //nolint:containedctx // for turning off the client.
 	cancel func()
 	closed bool
 }
@@ -68,84 +67,148 @@ func NewPublisher(connector Connector, conf ...ConfigFunc) (*Publisher, error) {
 		fn(cnf)
 	}
 
-	p := cnf.publisher()
-	p.connector = connector
-	p.ctx, p.cancel = context.WithCancel(p.ctx)
+	pub := cnf.publisher()
+	pub.connector = connector
+	pub.ctx, pub.cancel = context.WithCancel(pub.ctx)
 
-	err := p.validate()
+	err := pub.validate()
 	if err != nil {
 		return nil, fmt.Errorf("validating configuration: %w", err)
 	}
 
-	p.conn, err = p.connector()
+	pub.conn, err = pub.connector()
 	if err != nil {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
 
-	if p.chBuff == 0 {
-		p.chBuff = 1
+	if pub.chBuff == 0 {
+		pub.chBuff = 1
 	}
-	p.pubCh = make(chan *publishMsg, p.workers*p.chBuff)
-	p.channels = make(map[Channel]struct{}, p.workers)
-	for i := 0; i < p.workers; i++ {
-		ch, err := p.newChannel()
+
+	pub.pubCh = make(chan *publishMsg, pub.workers*pub.chBuff)
+
+	pub.channels = make(map[Channel]struct{}, pub.workers)
+
+	for range pub.workers {
+		pub.mu.Lock()
+
+		channel, err := pub.newChannel()
 		if err != nil {
+			pub.mu.Unlock()
 			return nil, fmt.Errorf("setting up a channel: %w", err)
 		}
 
-		p.channels[ch] = struct{}{}
-		p.publishWorker(ch)
-		p.registerReconnect(ch)
-	}
-	p.logger = p.logger.
-		WithName("publish").
-		WithName(p.exchName)
-	return p, nil
-}
+		pub.mu.Unlock()
 
-// acquireNewChannel closes the channel and starts a new one if the publisher
-// is not closed.
-func (p *Publisher) acquireNewChannel(ch Channel) Channel {
-	p.logErr(ch.Close(), "closing channel", "channel")
-	p.mu.Lock()
-	delete(p.channels, ch)
-	for {
-		if p.closed {
-			p.mu.Unlock()
-			return nil
-		}
-		var err error
-		ch, err = p.newChannel()
-		if err == nil {
-			break
-		}
-		time.Sleep(p.retryDelay)
+		pub.channels[channel] = struct{}{}
+		pub.publishWorker(channel)
+		pub.registerReconnect(channel)
 	}
-	p.channels[ch] = struct{}{}
-	p.mu.Unlock()
-	p.publishWorker(ch)
-	p.registerReconnect(ch)
-	p.logger.Info("Reconnected publisher")
-	return ch
+
+	pub.logger = pub.logger.
+		WithName("publish").
+		WithName(pub.exchName)
+
+	return pub, nil
 }
 
 // Publish sends the msg to the broker via the next available workers.
 func (p *Publisher) Publish(msg *amqp.Publishing) error {
 	p.mu.RLock()
+
 	if p.closed {
 		p.mu.RUnlock()
 		return ErrClosed
 	}
+
 	p.mu.RUnlock()
+
 	err := make(chan error)
 	p.pubCh <- &publishMsg{
 		msg:   msg,
 		errCh: err,
 	}
+
 	return <-err
 }
 
-func (p *Publisher) publishWorker(ch Channel) {
+// Close closes the channel and the connection. A closed client is not usable.
+func (p *Publisher) Close() error {
+	p.mu.RLock()
+
+	if p.closed {
+		p.mu.RUnlock()
+		return ErrClosed
+	}
+
+	p.mu.RUnlock()
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.once.Do(func() {
+		p.closed = true
+		p.cancel()
+	})
+
+	var err error
+
+	for channel := range p.channels {
+		er := channel.Close()
+		if er != nil {
+			err = errors.Join(err, er)
+		}
+
+		delete(p.channels, channel)
+	}
+
+	if p.conn != nil {
+		er := p.conn.Close()
+		if er != nil {
+			err = errors.Join(err, er)
+		}
+
+		p.conn = nil
+	}
+
+	return err
+}
+
+// acquireNewChannel closes the channel and starts a new one if the publisher
+// is not closed.
+//
+//nolint:ireturn // This is a wrapper around conn.Channel()
+func (p *Publisher) acquireNewChannel(channel Channel) Channel {
+	p.logErr(channel.Close(), "closing channel", "channel")
+	p.mu.Lock()
+	delete(p.channels, channel)
+
+	for {
+		if p.closed {
+			p.mu.Unlock()
+			return nil
+		}
+
+		var err error
+
+		channel, err = p.newChannel()
+		if err == nil {
+			break
+		}
+
+		time.Sleep(p.retryDelay)
+	}
+
+	p.channels[channel] = struct{}{}
+	p.mu.Unlock()
+	p.publishWorker(channel)
+	p.registerReconnect(channel)
+	p.logger.Info("Reconnected publisher")
+
+	return channel
+}
+
+func (p *Publisher) publishWorker(channel Channel) {
 	go func() {
 		for msg := range p.pubCh {
 			select {
@@ -154,14 +217,19 @@ func (p *Publisher) publishWorker(ch Channel) {
 				return
 			default:
 			}
+
 			msg.msg.DeliveryMode = uint8(p.deliveryMode)
 			p.mu.RLock()
-			if ch == nil {
+
+			if channel == nil {
 				p.mu.RUnlock()
+
 				msg.errCh <- ErrClosed
+
 				return
 			}
-			err := ch.Publish(
+
+			err := channel.Publish(
 				p.exchName,
 				p.routingKey,
 				false,
@@ -169,69 +237,46 @@ func (p *Publisher) publishWorker(ch Channel) {
 				*msg.msg,
 			)
 			p.mu.RUnlock()
+
 			if errors.Is(err, amqp.ErrClosed) {
 				p.pubCh <- msg
-				ch := p.acquireNewChannel(ch)
+
+				ch := p.acquireNewChannel(channel)
 				p.publishWorker(ch)
+
 				return
 			}
+
 			if err != nil {
 				err = fmt.Errorf("publishing message: %w", err)
 			}
+
 			msg.errCh <- err
 		}
 	}()
-}
-
-// Close closes the channel and the connection. A closed client is not usable.
-func (p *Publisher) Close() error {
-	p.mu.RLock()
-	if p.closed {
-		p.mu.RUnlock()
-		return ErrClosed
-	}
-	p.mu.RUnlock()
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.once.Do(func() {
-		p.closed = true
-		p.cancel()
-	})
-	var err error
-	for ch := range p.channels {
-		er := ch.Close()
-		if er != nil {
-			err = errors.Join(err, er)
-		}
-		delete(p.channels, ch)
-	}
-	if p.conn != nil {
-		er := p.conn.Close()
-		if er != nil {
-			err = errors.Join(err, er)
-		}
-		p.conn = nil
-	}
-	return err
 }
 
 func (p *Publisher) validate() error {
 	if p.connector == nil {
 		return fmt.Errorf("empty connection function (Connector): %w", ErrInput)
 	}
+
 	if p.workers < 1 {
 		return fmt.Errorf("not enough workers: %d: %w", p.workers, ErrInput)
 	}
+
 	if p.exchName == "" {
 		return fmt.Errorf("empty exchange name: %w", ErrInput)
 	}
+
 	if !p.exchType.IsValid() {
 		return fmt.Errorf("exchange type: %q: %w", p.exchType.String(), ErrInput)
 	}
+
 	if !p.deliveryMode.IsValid() {
 		return fmt.Errorf("delivery mode: %q: %w", p.deliveryMode.String(), ErrInput)
 	}
+
 	return nil
 }
 
@@ -241,14 +286,20 @@ func (p *Publisher) logErr(err error, msg, section string) {
 	}
 }
 
-func (p *Publisher) registerReconnect(ch Channel) {
+func (p *Publisher) registerReconnect(channel Channel) {
 	p.mu.RLock()
+
 	if p.closed {
 		p.mu.RUnlock()
 		return
 	}
+
 	p.mu.RUnlock()
-	errCh := ch.NotifyClose(make(chan *amqp.Error, 2))
+
+	const maxNotifCount = 2
+
+	errCh := channel.NotifyClose(make(chan *amqp.Error, maxNotifCount))
+
 	go func() {
 		select {
 		case <-p.ctx.Done():
@@ -256,96 +307,119 @@ func (p *Publisher) registerReconnect(ch Channel) {
 		case err := <-errCh:
 			p.logErr(err, "closed publisher", "connection")
 			p.mu.RLock()
+
 			if p.closed {
 				p.mu.RUnlock()
 				return
 			}
+
 			p.mu.RUnlock()
 
-			p.logErr(ch.Close(), "closing channel", "channel")
+			p.logErr(channel.Close(), "closing channel", "channel")
 
 			p.mu.Lock()
+
 			if p.conn != nil {
 				p.logErr(p.conn.Close(), "closing connection", "connection")
 				p.conn = nil
 			}
+
 			p.mu.Unlock()
-			ch := p.keepConnecting()
-			if ch == nil {
+
+			channel := p.keepConnecting()
+			if channel == nil {
+				p.logErr(nil, "unable to reconnect", "registerReconnect")
+
 				return
 			}
-			go p.registerReconnect(ch)
+
+			p.logger.Info("reconnected")
+
+			go p.registerReconnect(channel)
 		}
 	}()
 }
 
+//nolint:ireturn // This is a wrapper around the conn.Channel func.
 func (p *Publisher) keepConnecting() Channel {
 	// In each step we create a connection, we want to clean up if any of the
 	// consequent step fails.
 	type cleanup map[string]func() error
+
 	var cleanups []cleanup
+
 	for {
 		for _, cln := range cleanups {
 			for section, fn := range cln {
 				p.logErr(fn(), "Cleaning up", section)
 			}
 		}
-		cleanups = make([]cleanup, 0, 2)
+
+		const expectedCleanupCount = 1
+
+		cleanups = make([]cleanup, 0, expectedCleanupCount)
+
 		time.Sleep(p.retryDelay)
 		p.mu.RLock()
+
 		if p.closed {
 			p.mu.RUnlock()
 			return nil
 		}
+
 		p.mu.RUnlock()
 
-		cl, err := p.dial()
+		dialCleanup, err := p.dial()
 		if err != nil {
-			p.logger.V(1).Info("dial up", "err", err)
+			p.logger.V(1).Info("dial up", "err", err.Error())
 			continue
 		}
-		cleanups = append(cleanups, cleanup{"dial": cl})
+
+		cleanups = append(cleanups, cleanup{"dial": dialCleanup})
 
 		newCh, err := p.conn.Channel()
 		if err != nil {
-			p.logger.V(1).Info("setting up a channel", "err", err)
+			p.logger.V(1).Info("setting up a channel", "err", err.Error())
 			continue
 		}
+
 		return newCh
 	}
 }
 
+// dial requires the mutex to be locked.
 func (p *Publisher) dial() (func() error, error) {
-	p.mu.RLock()
 	if p.conn != nil {
 		// already reconnected
-		defer p.mu.RUnlock()
 		return p.conn.Close, nil
 	}
-	p.mu.RUnlock()
 
 	conn, err := p.connector()
 	if err != nil {
 		return nil, fmt.Errorf("getting a connection to the broker: %w", err)
 	}
-	p.mu.Lock()
+
 	p.conn = conn
-	p.mu.Unlock()
+
 	return conn.Close, nil
 }
 
+// newChannel requires the mutex to be locked.
+//
+//nolint:ireturn // This is a wrapper around the conn.Channel func.
 func (p *Publisher) newChannel() (Channel, error) {
 	cleanup, err := p.dial()
 	if err != nil {
 		return nil, err
 	}
-	ch, err := p.conn.Channel()
+
+	channel, err := p.conn.Channel()
 	if err != nil {
 		p.logErr(cleanup(), "creating channel", "channel")
 		return nil, fmt.Errorf("creating channel: %w", err)
 	}
 
-	err = ch.ExchangeDeclare(
+	err = channel.ExchangeDeclare(
 		p.exchName,
 		p.exchType.String(),
 		p.durable,
@@ -358,5 +432,6 @@ func (p *Publisher) newChannel() (Channel, error) {
 		p.logErr(cleanup(), "declaring exchange", "exchange")
 		return nil, fmt.Errorf("declaring exchange: %w", err)
 	}
-	return ch, nil
+
+	return channel, nil
 }

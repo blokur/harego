@@ -17,3 +17,7 @@ tmp/
 bin/
 coverage.out
 .tool-versions
+
+
+# IDE files
+.idea/

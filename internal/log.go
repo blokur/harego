@@ -58,15 +58,20 @@ func (s *Sink) Error(err error, msg string, kvs ...any) {
 
 // WithValues returns a new LogSink with additional key/value pairs.  See
 // Logger.WithValues for more details.
+//
+//nolint:ireturn // s implements logr.LogSink
 func (s *Sink) WithValues(kv ...any) logr.LogSink {
 	for i := 0; i < len(kv); i += 2 {
 		s.values[kv[i]] = kv[i+1]
 	}
+
 	return s
 }
 
 // WithName returns a new LogSink with the specified name appended.  See
 // Logger.WithName for more details.
+//
+//nolint:ireturn // Sink implements logr.LogSink.
 func (s *Sink) WithName(string) logr.LogSink { return s }
 
 func (s *Sink) getFields(kvs ...any) []string {
@@ -74,15 +79,19 @@ func (s *Sink) getFields(kvs ...any) []string {
 	for i := 0; i < len(kvs); i += 2 {
 		fields = append(fields, fmt.Sprintf("%v=%v", kvs[i], kvs[i+1]))
 	}
+
 	fields = append(fields, s.names...)
 
-	var k any
-	for i, kv := range kvs {
-		if i%2 == 0 {
-			k = kv
+	var key any
+
+	for idx, keyOrValue := range kvs {
+		if idx%2 == 0 {
+			key = keyOrValue
 			continue
 		}
-		fields = append(fields, fmt.Sprintf("%v=%v", k, kv))
+
+		fields = append(fields, fmt.Sprintf("%v=%v", key, keyOrValue))
 	}
+
 	return fields
 }
