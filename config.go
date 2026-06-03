@@ -292,6 +292,7 @@ func Buffer(n int) ConfigFunc {
 
 // DeprecatedLogger lets the user to provide their own logger. The default
 // logger is a noop struct.
+//
 // Deprecated: please use the new Logger function.
 func DeprecatedLogger(l logger) ConfigFunc {
 	return func(c *config) {
