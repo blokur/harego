@@ -63,8 +63,10 @@ linters:
           - gochecknoinits # I'm OK with inits for tests.
           - gocritic # Some of these are actually correct and should not be ignored / changed.
           - gosec # Some errors I tried to fix, others (such as forcing crypto/rand) make no sense.
+          - modernize # pre-existing test style; not rewriting test logic in the CVE pass.
           - testifylint # I tried to remove a few of them.
           - wrapcheck
+          - wsl_v5
         path: _test\.go
       - linters:
           - lll

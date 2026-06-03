@@ -12,8 +12,8 @@ import (
 
 	"github.com/arsham/retry/v2"
 	"github.com/containers/storage/pkg/ioutils"
-	"github.com/docker/docker/api/types/container"
 	"github.com/go-logr/logr"
+	"github.com/moby/moby/api/types/container"
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
