@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -30,6 +31,12 @@ type Consumer struct {
 	channel Channel
 	queue   amqp.Queue
 	msgs    <-chan amqp.Delivery // for cleaning up
+
+	// connected reports whether the consumer currently holds a live connection
+	// to the broker. It is updated atomically (never under mu) so that
+	// Connected can be polled by health checks without ever blocking on the
+	// reconnection path.
+	connected atomic.Bool
 
 	global bool
 
@@ -111,6 +118,8 @@ func NewConsumer(connector Connector, conf ...ConfigFunc) (*Consumer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("setting up a queue: %w", err)
 	}
+
+	consumer.connected.Store(true)
 
 	consumer.registerReconnect(consumer.ctx)
 	consumer.logger = consumer.logger.
@@ -194,6 +203,7 @@ func (c *Consumer) Close() error {
 
 	c.once.Do(func() {
 		c.closed = true
+		c.connected.Store(false)
 		c.cancel()
 	})
 
@@ -219,6 +229,14 @@ func (c *Consumer) Close() error {
 	}
 
 	return err
+}
+
+// Connected reports whether the consumer currently holds a live connection to
+// the broker. It returns false while a reconnection is in progress and after
+// Close has been called. It is safe to call concurrently and never blocks,
+// making it suitable for use in liveness/readiness health checks.
+func (c *Consumer) Connected() bool {
+	return c.connected.Load()
 }
 
 func (c *Consumer) logErr(err error, msg, section string) {
@@ -335,6 +353,11 @@ func (c *Consumer) registerReconnect(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case err := <-channel:
+			// Mark the consumer as disconnected before taking any lock, so that
+			// Connected reports the outage even if the reconnection path below
+			// is unable to make progress (e.g. a worker holding the lock).
+			c.connected.Store(false)
+
 			c.logger.Info("closed consumer", "err", func() string {
 				if err != nil {
 					return err.Error()
@@ -431,6 +454,8 @@ func (c *Consumer) keepConnecting() {
 			c.logger.V(1).Info("setting up the consumer channel", "err", err.Error())
 			continue
 		}
+
+		c.connected.Store(true)
 
 		c.logger.Info("Reconnected consumer")
 

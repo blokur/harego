@@ -118,7 +118,8 @@ func getConsumerPublisherWithAddr(
 	err = retryConfig.Do(func() error {
 		var err error
 
-		pub, err = harego.NewPublisher(harego.URLConnector(addr),
+		pub, err = harego.NewPublisher(
+			harego.URLConnector(addr),
 			conf...,
 		)
 
@@ -135,7 +136,8 @@ func getConsumerPublisherWithAddr(
 	err = retryConfig.Do(func() error {
 		var err error
 
-		cons, err = harego.NewConsumer(harego.URLConnector(addr),
+		cons, err = harego.NewConsumer(
+			harego.URLConnector(addr),
 			conf...,
 		)
 
@@ -161,7 +163,8 @@ func getContainer(t *testing.T) (*rabbitmq.RabbitMQContainer, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Second)
 	defer cancel()
 
-	rabbitmqContainer, err := rabbitmq.Run(ctx,
+	rabbitmqContainer, err := rabbitmq.Run(
+		ctx,
 		"rabbitmq:4.1-management-alpine",
 		rabbitmq.WithAdminUsername("guest"),
 		rabbitmq.WithAdminPassword("guest"),
@@ -309,9 +312,15 @@ func (a *acknowledger) Reject(tag uint64, multiple bool) error {
 
 // getPassingChannel returns a mock of the amqp.Channel interface that has
 // messages in it's queue.
-//
-//nolint:unparam // Maybe we'll need various values later.
 func getPassingChannel(t *testing.T, messages int) *mocks.Channel {
+	t.Helper()
+	return getPassingChannelWithNotify(t, make(chan *amqp.Error, 10), messages)
+}
+
+// getPassingChannelWithNotify behaves like getPassingChannel but uses the
+// provided notify channel for NotifyClose so the caller can simulate the broker
+// closing the connection.
+func getPassingChannelWithNotify(t *testing.T, notify chan *amqp.Error, messages int) *mocks.Channel {
 	t.Helper()
 	channel := mocks.NewChannel(t)
 	channel.On("Qos", mock.Anything, mock.Anything, mock.Anything).
@@ -325,7 +334,7 @@ func getPassingChannel(t *testing.T, messages int) *mocks.Channel {
 	channel.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(nil).Maybe()
 	channel.On("NotifyClose", mock.Anything).
-		Return(make(chan *amqp.Error, 10)).Maybe()
+		Return(notify).Maybe()
 
 	delivery := make(chan amqp.Delivery, messages)
 	for i := range messages {
@@ -335,7 +344,8 @@ func getPassingChannel(t *testing.T, messages int) *mocks.Channel {
 		}
 	}
 
-	channel.On("Consume", mock.Anything, mock.Anything, mock.Anything,
+	channel.On(
+		"Consume", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return((<-chan amqp.Delivery)(delivery), nil).Maybe()
 	channel.On("Publish", mock.Anything, mock.Anything, mock.Anything,

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -62,7 +63,8 @@ func testNewConsumerBadInput(t *testing.T) {
 	for idx, testCase := range testCases {
 		name := fmt.Sprintf("%d_%s", idx, testCase.msg)
 		t.Run(name, func(t *testing.T) {
-			_, err := harego.NewConsumer(conn,
+			_, err := harego.NewConsumer(
+				conn,
 				testCase.conf...,
 			)
 			require.Error(t, err)
@@ -86,7 +88,8 @@ func testNewConsumerChannel(t *testing.T) {
 	r := mocks.NewRabbitMQ(t)
 	r.On("Channel").Return(nil, assert.AnError).Once()
 
-	_, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return r, nil },
+	_, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return r, nil },
 		harego.QueueName(testament.RandomLowerString(10)),
 	)
 	assert.ErrorIs(t, err, assert.AnError)
@@ -101,7 +104,8 @@ func testNewConsumerQos(t *testing.T) {
 	channel.On("Qos", mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	_, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomLowerString(10)),
 	)
 	assert.ErrorIs(t, err, assert.AnError)
@@ -123,7 +127,8 @@ func testNewConsumerQueueDeclare(t *testing.T) {
 		mock.Anything, mock.Anything).
 		Return(amqp.Queue{}, assert.AnError).Once()
 
-	_, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	_, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomString(20)),
 	)
 	assert.ErrorIs(t, err, assert.AnError)
@@ -157,7 +162,8 @@ func testNewConsumerQueueBindNoArgs(t *testing.T) {
 	channel.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	_, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.PrefetchCount(prefetchCount),
 		harego.PrefetchSize(prefetchSize),
 		harego.QueueName(queue),
@@ -200,7 +206,8 @@ func testNewConsumerQueueBindArgs(t *testing.T) {
 	channel.On("QueueBind", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(assert.AnError).Once()
 
-	_, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	_, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.PrefetchCount(prefetchCount),
 		harego.PrefetchSize(prefetchSize),
 		harego.QueueName(queue),
@@ -247,14 +254,16 @@ func testClientConsumeChannelError(t *testing.T) {
 
 	queueName := testament.RandomString(10)
 	consumerName := testament.RandomString(10)
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(queueName),
 		harego.ConsumerName(consumerName),
 		harego.NoWait,
 	)
 	require.NoError(t, err)
 
-	channel.On("Consume",
+	channel.On(
+		"Consume",
 		queueName,
 		consumerName,
 		mock.Anything, mock.Anything, mock.Anything,
@@ -275,7 +284,8 @@ func testClientConsumeNilHandler(t *testing.T) {
 	channel := getPassingChannel(t, 1)
 	rabbitCli.On("Channel").Return(channel, nil)
 
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomString(10)),
 	)
 	require.NoError(t, err)
@@ -306,7 +316,8 @@ func testClientConsumeCancelledContext(t *testing.T) {
 	channel.On("NotifyClose", mock.Anything).
 		Return(make(chan *amqp.Error, 10))
 
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomString(10)),
 	)
 	require.NoError(t, err)
@@ -317,7 +328,8 @@ func testClientConsumeCancelledContext(t *testing.T) {
 	delivery := make(chan amqp.Delivery, 1)
 	delivery <- amqp.Delivery{Body: []byte("first message")}
 
-	channel.On("Consume", mock.Anything, mock.Anything, mock.Anything,
+	channel.On(
+		"Consume", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 	).Return((<-chan amqp.Delivery)(delivery), nil).Once()
 
@@ -356,7 +368,8 @@ func testClientConsumeAlreadyClosed(t *testing.T) {
 	rabbitCli.On("Channel").Return(channel, nil)
 	rabbitCli.On("Close").Return(nil)
 
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomString(10)),
 	)
 	require.NoError(t, err)
@@ -387,7 +400,8 @@ func testClientConsumeHandlePanicsDefaultLogger(t *testing.T) {
 	rabbitcli.On("Channel").Return(channel, nil)
 	rabbitcli.On("Close").Return(nil)
 
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitcli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitcli, nil },
 		harego.QueueName(testament.RandomString(10)),
 	)
 	require.NoError(t, err)
@@ -416,7 +430,8 @@ func testClientConsumeHandlePanicsWithLogger(t *testing.T) {
 	rabbitCli.On("Close").Return(nil)
 
 	logger := newMockLogger()
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomString(10)),
 		harego.Logger(logger.logger),
 	)
@@ -453,7 +468,8 @@ func testClientCloseAlreadyClosed(t *testing.T) {
 	rabbitCli.On("Channel").Return(channel, nil)
 	rabbitCli.On("Close").Return(nil)
 
-	cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 		harego.QueueName(testament.RandomLowerString(10)),
 	)
 	require.NoError(t, err)
@@ -502,7 +518,8 @@ func testClientCloseErrors(t *testing.T) {
 			channel.On("NotifyClose", mock.Anything).
 				Return(make(chan *amqp.Error, 10))
 
-			cons, err := harego.NewConsumer(func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+			cons, err := harego.NewConsumer(
+				func() (harego.RabbitMQ, error) { return rabbitCli, nil },
 				harego.QueueName(testament.RandomLowerString(10)),
 			)
 			require.NoError(t, err)
@@ -534,4 +551,156 @@ func testClientCloseMultipleTimes(t *testing.T) {
 		err = cons.Close()
 		assert.ErrorIs(t, err, harego.ErrClosed)
 	}
+}
+
+func TestConsumerConnected(t *testing.T) {
+	t.Parallel()
+	t.Run("FreshConsumer", testConsumerConnectedFresh)
+	t.Run("AfterClose", testConsumerConnectedAfterClose)
+	t.Run("ReconnectsAfterDrop", testConsumerConnectedReconnectsAfterDrop)
+	t.Run("StaysDownDuringOutage", testConsumerConnectedStaysDownDuringOutage)
+}
+
+// testConsumerConnectedFresh asserts a freshly-constructed consumer reports as
+// connected.
+func testConsumerConnectedFresh(t *testing.T) {
+	t.Parallel()
+	rabbitCli := mocks.NewRabbitMQ(t)
+	channel := getPassingChannel(t, 0)
+	rabbitCli.On("Channel").Return(channel, nil)
+	rabbitCli.On("Close").Return(nil).Maybe()
+
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+		harego.QueueName(testament.RandomLowerString(10)),
+	)
+	require.NoError(t, err)
+
+	defer func() { assert.NoError(t, cons.Close()) }()
+
+	assert.True(t, cons.Connected())
+}
+
+// testConsumerConnectedAfterClose asserts a consumer reports as disconnected
+// once it has been closed.
+func testConsumerConnectedAfterClose(t *testing.T) {
+	t.Parallel()
+	rabbitCli := mocks.NewRabbitMQ(t)
+	channel := getPassingChannel(t, 0)
+	rabbitCli.On("Channel").Return(channel, nil)
+	rabbitCli.On("Close").Return(nil)
+
+	cons, err := harego.NewConsumer(
+		func() (harego.RabbitMQ, error) { return rabbitCli, nil },
+		harego.QueueName(testament.RandomLowerString(10)),
+	)
+	require.NoError(t, err)
+
+	require.NoError(t, cons.Close())
+	assert.False(t, cons.Connected())
+}
+
+// testConsumerConnectedReconnectsAfterDrop asserts that when the broker
+// connection drops, Connected reports false while the reconnection is blocked,
+// and flips back to true once the reconnection succeeds.
+func testConsumerConnectedReconnectsAfterDrop(t *testing.T) {
+	t.Parallel()
+	// The consumer's channel exposes a notify channel we control; the internal
+	// requeue publisher gets its own independent channel so it does not compete
+	// for the close notification we push.
+	notify := make(chan *amqp.Error, 10)
+	consumerChannel := getPassingChannelWithNotify(t, notify, 0)
+	publisherChannel := getPassingChannel(t, 0)
+
+	rabbitCli := mocks.NewRabbitMQ(t)
+	rabbitCli.On("Channel").Return(consumerChannel, nil).Once()
+	rabbitCli.On("Channel").Return(publisherChannel, nil)
+	rabbitCli.On("Close").Return(nil).Maybe()
+
+	// After construction, block every reconnection dial until release is closed
+	// so we can observe the disconnected window deterministically.
+	var blockReconnect atomic.Bool
+
+	release := make(chan struct{})
+
+	connector := func() (harego.RabbitMQ, error) {
+		if blockReconnect.Load() {
+			<-release
+		}
+
+		return rabbitCli, nil
+	}
+
+	cons, err := harego.NewConsumer(
+		connector,
+		harego.QueueName(testament.RandomLowerString(10)),
+		harego.RetryDelay(10*time.Millisecond),
+	)
+	require.NoError(t, err)
+
+	defer func() { assert.NoError(t, cons.Close()) }()
+
+	require.True(t, cons.Connected())
+
+	blockReconnect.Store(true)
+
+	// Simulate the broker dropping the connection.
+	notify <- amqp.ErrClosed
+
+	assert.Eventually(t, func() bool { return !cons.Connected() },
+		time.Second, 5*time.Millisecond, "should report disconnected during the outage")
+
+	// Let the reconnection proceed.
+	blockReconnect.Store(false)
+	close(release)
+
+	assert.Eventually(t, func() bool { return cons.Connected() },
+		time.Second, 5*time.Millisecond, "should report connected after reconnecting")
+}
+
+// testConsumerConnectedStaysDownDuringOutage asserts that Connected keeps
+// reporting false for as long as the broker is unreachable.
+func testConsumerConnectedStaysDownDuringOutage(t *testing.T) {
+	t.Parallel()
+
+	notify := make(chan *amqp.Error, 10)
+	consumerChannel := getPassingChannelWithNotify(t, notify, 0)
+	publisherChannel := getPassingChannel(t, 0)
+
+	rabbitCli := mocks.NewRabbitMQ(t)
+	rabbitCli.On("Channel").Return(consumerChannel, nil).Once()
+	rabbitCli.On("Channel").Return(publisherChannel, nil)
+	rabbitCli.On("Close").Return(nil).Maybe()
+
+	// After construction, every reconnection dial fails, so the reconnection
+	// loop can never re-establish.
+	var fail atomic.Bool
+
+	connector := func() (harego.RabbitMQ, error) {
+		if fail.Load() {
+			return nil, assert.AnError
+		}
+
+		return rabbitCli, nil
+	}
+
+	cons, err := harego.NewConsumer(
+		connector,
+		harego.QueueName(testament.RandomLowerString(10)),
+		harego.RetryDelay(10*time.Millisecond),
+	)
+	require.NoError(t, err)
+
+	defer func() { assert.NoError(t, cons.Close()) }()
+
+	require.True(t, cons.Connected())
+
+	fail.Store(true)
+
+	notify <- amqp.ErrClosed
+
+	assert.Eventually(t, func() bool { return !cons.Connected() },
+		time.Second, 5*time.Millisecond, "should report disconnected")
+	assert.Never(t, cons.Connected, 300*time.Millisecond, 20*time.Millisecond,
+		"should stay disconnected while the broker is unreachable")
 }
