@@ -1,6 +1,6 @@
 module github.com/blokur/harego/v2
 
-go 1.26.4
+go 1.26.5
 
 require (
 	github.com/arsham/retry/v2 v2.1.0

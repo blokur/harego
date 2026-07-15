@@ -723,6 +723,11 @@ func testIntegConsumerReconnect(t *testing.T) {
 	}, 2*time.Minute, 50*time.Millisecond)
 
 	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
+
+	// Having consumed everything after the broker restart, the consumer must
+	// report itself as reconnected.
+	assert.Eventually(t, cons.Connected, 30*time.Second, 100*time.Millisecond,
+		"consumer should report connected after reconnecting to the restarted broker")
 }
 
 func testIntegConsumerClose(t *testing.T) {
