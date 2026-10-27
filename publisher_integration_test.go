@@ -208,11 +208,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 	// we want the goroutine to wait for us before publishing.
 	restart := make(chan chan struct{})
 
-	wGroup.Add(1)
-
-	go func() {
-		defer wGroup.Done()
-
+	wGroup.Go(func() {
 		for {
 			select {
 			case ch := <-restart:
@@ -223,11 +219,11 @@ func testIntegPublisherReconnect(t *testing.T) {
 				return
 			}
 		}
-	}()
+	})
 
 	wGroup.Add(1)
 
-	var calls int32
+	var calls atomic.Int32
 
 	go func() {
 		defer wGroup.Done()
@@ -237,7 +233,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 			err := cons.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
 				i++
 
-				g := int(atomic.AddInt32(&calls, 1))
+				g := int(calls.Add(1))
 				if g >= total {
 					cancel()
 				}
@@ -288,7 +284,7 @@ func testIntegPublisherReconnect(t *testing.T) {
 		return true
 	}, 2*time.Minute, 50*time.Millisecond)
 
-	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
+	assert.EqualValues(t, total, calls.Load())
 }
 
 func testIntegPublisherClose(t *testing.T) {
@@ -304,11 +300,7 @@ func testIntegPublisherClose(t *testing.T) {
 
 	var wGroup sync.WaitGroup
 	for range total - 1 {
-		wGroup.Add(1)
-
-		go func() {
-			defer wGroup.Done()
-
+		wGroup.Go(func() {
 			err := pub.Publish(&amqp.Publishing{
 				Body: []byte(testament.RandomString(20)),
 			})
@@ -317,7 +309,7 @@ func testIntegPublisherClose(t *testing.T) {
 			}
 
 			assert.True(t, errors.Is(err, harego.ErrClosed) || errors.Is(err, context.Canceled))
-		}()
+		})
 	}
 
 	wGroup.Add(total / 2)

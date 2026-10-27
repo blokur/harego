@@ -279,15 +279,11 @@ func testPublisherClosePublishNotPanic(t *testing.T) {
 
 	var wGroup sync.WaitGroup
 	for range total - 1 {
-		wGroup.Add(1)
-
-		go func() {
-			defer wGroup.Done()
-
+		wGroup.Go(func() {
 			assert.NotPanics(t, func() {
 				pub.Publish(&amqp.Publishing{})
 			})
-		}()
+		})
 	}
 
 	err = pub.Close()

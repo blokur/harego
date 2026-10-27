@@ -1,5 +1,6 @@
 version: "2"
 run:
+  concurrency: 4
   build-tags:
     - integration
   tests: true
@@ -9,6 +10,9 @@ linters:
   disable:
     - depguard # As much as I would like to use this, it is completely unmanageable.
     - exhaustruct # This lib is usually pointless.
+    - exhaustruct_v5 # Same as exhaustruct.
+    - gomodguard # Deprecated, replaced by gomodguard_v2.
+    - wsl # Deprecated, replaced by wsl_v5.
   settings:
     cyclop:
       max-complexity: 30

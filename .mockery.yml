@@ -1,0 +1,15 @@
+template: testify
+dir: "mocks"
+pkgname: mocks
+filename: "{{.InterfaceName | snakecase}}_mock.go"
+structname: "{{.InterfaceName}}"
+force-file-write: true
+packages:
+  github.com/blokur/harego/v2:
+    interfaces:
+      RabbitMQ:
+        config:
+          filename: rabbitmq_mock.go
+      Channel:
+        config:
+          filename: channel_mock.go

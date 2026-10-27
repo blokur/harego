@@ -7,8 +7,6 @@ import (
 )
 
 // RabbitMQ defines a rabbitmq exchange.
-//
-//go:generate mockery --name RabbitMQ --filename rabbitmq_mock.go
 type RabbitMQ interface {
 	Channel() (Channel, error)
 	Close() error
@@ -28,8 +26,6 @@ type HandlerFunc func(msg *amqp.Delivery) (a AckType, delay time.Duration)
 type PanicHandler func(msg *amqp.Delivery, r any) (a AckType, delay time.Duration)
 
 // A Channel can operate queues. This is a subset of the amqp.Channel api.
-//
-//go:generate mockery --name Channel --filename channel_mock.go
 type Channel interface {
 	// ExchangeDeclare declares an exchange on the server. If the exchange does
 	// not already exist, the server will create it. If the exchange exists,

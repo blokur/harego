@@ -2,10 +2,10 @@ name: Continues Integration
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
   pull_request:
     branches:
-      - master
+      - main
       - feature/*
       - bugfix/*
       - refactor/*
@@ -20,10 +20,10 @@ jobs:
       GOPRIVATE: github.com/blokur
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
@@ -46,10 +46,10 @@ jobs:
       GOPRIVATE: github.com/blokur
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: "go.mod"
 
@@ -63,7 +63,11 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+      - name: Format check
+        run: test -z "$(go run mvdan.cc/gofumpt@latest -l .)"
+
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          args: --timeout 5m0s
+          version: v2.15.0
+          args: --timeout 5m0s --concurrency=4
