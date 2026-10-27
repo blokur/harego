@@ -694,14 +694,14 @@ func testIntegConsumerReconnect(t *testing.T) {
 
 	wGroup.Add(1)
 
-	var calls int32
+	var calls atomic.Int32
 
 	go func() {
 		defer wGroup.Done()
 
 		assert.NotPanics(t, func() {
 			err := cons.Consume(ctx, func(*amqp.Delivery) (harego.AckType, time.Duration) {
-				numCalls := int(atomic.AddInt32(&calls, 1))
+				numCalls := int(calls.Add(1))
 				if numCalls == total/5 {
 					close(restart)
 					time.Sleep(time.Second)
@@ -722,7 +722,7 @@ func testIntegConsumerReconnect(t *testing.T) {
 		return true
 	}, 2*time.Minute, 50*time.Millisecond)
 
-	assert.EqualValues(t, total, atomic.LoadInt32(&calls))
+	assert.EqualValues(t, total, calls.Load())
 
 	// Having consumed everything after the broker restart, the consumer must
 	// report itself as reconnected.
@@ -743,11 +743,7 @@ func testIntegConsumerClose(t *testing.T) {
 
 	var wGroup sync.WaitGroup
 	for range total - 1 {
-		wGroup.Add(1)
-
-		go func() {
-			defer wGroup.Done()
-
+		wGroup.Go(func() {
 			err := broker.Publish(&amqp.Publishing{
 				Body: []byte(testament.RandomString(20)),
 			})
@@ -756,7 +752,7 @@ func testIntegConsumerClose(t *testing.T) {
 			}
 
 			assert.True(t, errors.Is(err, harego.ErrClosed) || errors.Is(err, context.Canceled), err)
-		}()
+		})
 	}
 
 	wGroup.Add(total / 2)

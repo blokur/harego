@@ -28,9 +28,9 @@ integration_test_watch: ## Run integration in watch mode. You can set: [run, tim
 
 .PHONY: lint
 lint: ## Lint the code
-	go fmt ./...
+	gofumpt -w .
 	go vet ./...
-	golangci-lint run ./...
+	golangci-lint run --concurrency=4 ./...
 	govulncheck -show traces,color,verbose ./...
 
 .PHONY: ci_tests
@@ -39,22 +39,20 @@ ci_tests: ## Run tests for CI.
 
 .PHONY: dependencies
 dependencies: ## Install dependencies requried for development operations.
-	@go get -u -d github.com/rubenv/sql-migrate/...
-	@go get -u -d github.com/stretchr/testify/mock
-	@go install github.com/vektra/mockery/v2@latest
+	@go install github.com/vektra/mockery/v3@latest
 	@go install github.com/cespare/reflex@latest
 	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 	@go install github.com/psampaz/go-mod-outdated@latest
 	@go install github.com/jondot/goweight@latest
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
-	@go get -t -u golang.org/x/tools/cmd/cover
-	@go get -t -u github.com/sonatype-nexus-community/nancy@latest
-	@go get -u golang.org/x/tools/cmd/stringer
-	@go get -u -d ./...
+	@go install golang.org/x/tools/cmd/stringer@latest
+	@go install mvdan.cc/gofumpt@latest
+	@go get -u -t ./...
 	@go mod tidy
 
 .PHONY: mocks
 mocks: ## Generate mocks in all packages.
+	@mockery
 	@go generate ./...
 
 .PHONY: clean
@@ -72,5 +70,4 @@ coverage: ## Show the test coverage on browser.
 audit: ## Audit the code for updates, vulnerabilities and binary weight.
 	govulncheck ./...
 	go list -u -m -json all | go-mod-outdated -update -direct
-	go list -json -deps | nancy sleuth
 	goweight | head -n 20

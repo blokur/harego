@@ -182,7 +182,7 @@ func testNewConsumerQueueBindArgs(t *testing.T) {
 	prefetchCount := rand.IntN(9999)
 	prefetchSize := rand.IntN(9999)
 	queue := testament.RandomString(10)
-	args := map[string]interface{}{
+	args := map[string]any{
 		"arg1": "val1",
 		"arg2": "val2",
 	}

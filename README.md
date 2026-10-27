@@ -2,7 +2,7 @@
 
 High-level library on top of [amqp][amqp].
 
-[![Build Status](https://travis-ci.com/blokur/harego.svg?token=TM5LRGpEAwKms8UULFDi&branch=master)](https://travis-ci.com/blokur/harego)
+[![Build Status](https://travis-ci.com/blokur/harego.svg?token=TM5LRGpEAwKms8UULFDi&branch=main)](https://travis-ci.com/blokur/harego)
 
 ![Harego](https://media.giphy.com/media/uNNsPzWVFzfuE/giphy.gif)
 
